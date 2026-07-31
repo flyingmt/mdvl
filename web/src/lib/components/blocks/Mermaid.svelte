@@ -3,13 +3,18 @@
 </script>
 
 <script lang="ts">
+	import { fenceBody } from '$lib/blocks';
+	import { t } from '$lib/i18n';
+
 	let { source }: { source: string } = $props();
 
 	let svg = $state('');
 	let failure = $state('');
 
+	const diagram = $derived(fenceBody(source));
+
 	$effect(() => {
-		const diagram = source;
+		const drawing = diagram;
 		const name = `mermaid-${(counter += 1)}`;
 		let abandoned = false;
 
@@ -17,7 +22,7 @@
 			try {
 				const mermaid = (await import('mermaid')).default;
 				mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' });
-				const drawn = await mermaid.render(name, diagram);
+				const drawn = await mermaid.render(name, drawing);
 				if (abandoned) return;
 				svg = drawn.svg;
 				failure = '';
@@ -38,10 +43,10 @@
 
 {#if failure}
 	<div class="rounded-lg border border-amber-300 bg-amber-50 p-3">
-		<p class="text-sm font-medium text-amber-900">This diagram could not be drawn.</p>
+		<p class="text-sm font-medium text-amber-900">{t.diagramFailed}</p>
 		<p class="mt-1 font-mono text-xs whitespace-pre-wrap text-amber-800">{failure}</p>
 		<pre
-			class="mt-2 overflow-x-auto rounded bg-white/70 p-2 font-mono text-xs text-neutral-700">{source}</pre>
+			class="mt-2 overflow-x-auto rounded bg-white/70 p-2 font-mono text-xs text-neutral-700">{diagram}</pre>
 	</div>
 {:else if svg}
 	<!-- mermaid draws this from the fence's text under securityLevel: strict; the -->
@@ -49,5 +54,5 @@
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	<div class="overflow-x-auto text-center" data-testid="diagram">{@html svg}</div>
 {:else}
-	<div class="h-24 animate-pulse rounded-lg bg-neutral-100"></div>
+	<div class="h-24 animate-pulse rounded-lg bg-muted"></div>
 {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Power } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -15,15 +16,17 @@
 		type Comment,
 		type Document
 	} from '$lib/blocks';
+	import { t } from '$lib/i18n';
 	import BlockView from '$lib/components/BlockView.svelte';
-	import Button from '$lib/components/Button.svelte';
 	import InsertionPoint from '$lib/components/InsertionPoint.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Textarea } from '$lib/components/ui/textarea';
 
 	let path = $state('');
 	let doc = $state<Document>({ prelude: '', blocks: [] });
 	let overall = $state('');
 	let loading = $state(true);
-	let problem = $state('');
 	let confirmingEnd = $state(false);
 	let outcome = $state<{ status: string; conflictCopy?: string } | null>(null);
 	let stopped = $state(false);
@@ -57,7 +60,6 @@
 	async function load(current: string) {
 		if (!current) return;
 		loading = true;
-		problem = '';
 		try {
 			const review = await api.fetchReview(current);
 			path = review.path;
@@ -65,7 +67,7 @@
 			overall = review.draft?.overall ?? '';
 			outcome = review.state === 'pending' ? null : { status: review.state };
 		} catch (error) {
-			problem = describe(error);
+			toast.error(describe(error));
 		} finally {
 			loading = false;
 		}
@@ -143,17 +145,18 @@
 			});
 			outcome = { status: result.status, conflictCopy: result.conflict_copy };
 		} catch (error) {
-			problem = describe(error);
+			toast.error(describe(error));
 		}
 	}
 
 	async function endReview() {
 		clearTimeout(pendingKeep);
+		confirmingEnd = false;
 		try {
 			await api.cancelReview(id);
 			outcome = { status: 'cancelled' };
 		} catch (error) {
-			problem = describe(error);
+			toast.error(describe(error));
 		}
 	}
 
@@ -172,38 +175,34 @@
 
 <div class="min-h-screen">
 	<header
-		class="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-neutral-200 bg-white/90 px-4 py-2.5 backdrop-blur"
+		class="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border bg-background/90 px-4 py-2.5 backdrop-blur"
 	>
-		<p class="truncate font-mono text-sm text-neutral-600">{path}</p>
-		<Button onclick={stopApp} aria-label="Stop the mdvl app">
-			<Power size={15} aria-hidden="true" />
-			Stop app
+		<p class="truncate font-mono text-sm text-muted-foreground">{path}</p>
+		<Button variant="outline" size="sm" onclick={stopApp}>
+			<Power aria-hidden="true" />
+			{t.stopApp}
 		</Button>
 	</header>
 
 	<main class="mx-auto w-full max-w-[46rem] px-4 py-8">
 		{#if stopped}
-			<p class="rounded-lg bg-neutral-100 p-4 text-sm">mdvl has stopped. You can close this tab.</p>
+			<p class="rounded-lg bg-muted p-4 text-sm">{t.stoppedApp}</p>
 		{:else if loading}
-			<p class="text-sm text-neutral-500">Loading…</p>
-		{:else if problem}
-			<p class="rounded-lg bg-red-50 p-4 text-sm text-red-800">{problem}</p>
+			<p class="text-sm text-muted-foreground">{t.loading}</p>
 		{:else if outcome}
-			<div class="rounded-lg border border-neutral-200 bg-white p-5 text-sm">
+			<div class="rounded-lg border border-border p-5 text-sm">
 				{#if outcome.status === 'submitted'}
-					<p class="font-medium">Sent to the agent.</p>
-					<p class="mt-1 text-neutral-600">
-						Your edits are saved. You can go back to the agent now.
-					</p>
+					<p class="font-medium">{t.sentTitle}</p>
+					<p class="mt-1 text-muted-foreground">{t.sentBody}</p>
 				{:else if outcome.status === 'cancelled'}
-					<p class="font-medium">Review ended.</p>
-					<p class="mt-1 text-neutral-600">Nothing was written to the file.</p>
+					<p class="font-medium">{t.endedTitle}</p>
+					<p class="mt-1 text-muted-foreground">{t.endedBody}</p>
 				{:else}
-					<p class="font-medium text-amber-900">The file changed while you were reviewing.</p>
-					<p class="mt-1 text-neutral-600">
-						Nothing was overwritten. Your version was kept at
-						<code class="rounded bg-neutral-100 px-1 py-0.5 font-mono">{outcome.conflictCopy}</code>
-						— the agent has been told where to find it.
+					<p class="font-medium text-amber-900">{t.conflictTitle}</p>
+					<p class="mt-1 text-muted-foreground">
+						{t.conflictBefore}
+						<code class="rounded bg-muted px-1 py-0.5 font-mono">{outcome.conflictCopy}</code>
+						{t.conflictAfter}
 					</p>
 				{/if}
 			</div>
@@ -219,38 +218,40 @@
 				<InsertionPoint oninsert={(markdown) => insert(index, markdown)} />
 			{/each}
 
-			<div class="mt-10 border-t border-neutral-200 pt-6">
-				<label for="overall" class="text-sm font-medium text-neutral-700">
-					Anything about the document as a whole?
-				</label>
-				<textarea
+			<div class="mt-10 border-t border-border pt-6">
+				<label for="overall" class="text-sm font-medium">{t.overallLabel}</label>
+				<Textarea
 					id="overall"
 					bind:value={overall}
 					oninput={touched}
-					rows="3"
-					placeholder="Optional — e.g. too long, wrong audience, missing a section"
-					class="mt-2 w-full resize-y rounded-md bg-white p-3 text-sm ring-1 ring-neutral-300 outline-none focus:ring-neutral-900"
-				></textarea>
+					rows={3}
+					placeholder={t.overallPlaceholder}
+					class="mt-2 text-sm"
+				/>
 			</div>
 		{/if}
 	</main>
 
-	{#if !outcome && !loading && !problem && !stopped}
-		<footer class="sticky bottom-0 border-t border-neutral-200 bg-white/90 px-4 py-3 backdrop-blur">
+	{#if !outcome && !loading && !stopped}
+		<footer class="sticky bottom-0 border-t border-border bg-background/90 px-4 py-3 backdrop-blur">
 			<div class="mx-auto flex w-full max-w-[46rem] items-center gap-3">
-				<Button variant="primary" onclick={submit}>Submit</Button>
-				{#if confirmingEnd}
-					<span class="text-sm text-neutral-600">End without sending anything?</span>
-					<Button variant="danger" onclick={endReview}>End review</Button>
-					<Button onclick={() => (confirmingEnd = false)}>Keep reviewing</Button>
-				{:else}
-					<Button onclick={() => (confirmingEnd = true)}>End review</Button>
-					<span class="ml-auto text-xs text-neutral-500">
-						{commentCount}
-						{commentCount === 1 ? 'comment' : 'comments'}
-					</span>
-				{/if}
+				<Button onclick={submit}>{t.submit}</Button>
+				<Button variant="outline" onclick={() => (confirmingEnd = true)}>{t.endReview}</Button>
+				<span class="ml-auto text-xs text-muted-foreground">{t.commentCount(commentCount)}</span>
 			</div>
 		</footer>
 	{/if}
 </div>
+
+<Dialog.Root bind:open={confirmingEnd}>
+	<Dialog.Content>
+		<Dialog.Header>
+			<Dialog.Title>{t.endReviewTitle}</Dialog.Title>
+			<Dialog.Description>{t.endReviewBody}</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (confirmingEnd = false)}>{t.keepReviewing}</Button>
+			<Button variant="destructive" onclick={endReview}>{t.endReview}</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

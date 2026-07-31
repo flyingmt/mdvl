@@ -126,7 +126,7 @@ test('deleting a block takes its comments with it', async ({ page }) => {
 	const block = blocks(page).nth(1);
 	await block.hover();
 	await block.getByRole('button', { name: 'Delete this block' }).click();
-	await page.getByRole('button', { name: 'Delete', exact: true }).click();
+	await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
 
 	await expect(blocks(page)).toHaveCount(5);
 	await expect(page.getByText('explain why')).toHaveCount(0);
@@ -148,9 +148,9 @@ test('emptying a commented block asks before taking the comments with it', async
 	await block.getByRole('textbox', { name: 'Markdown source of this block' }).fill('');
 	await block.getByRole('button', { name: 'Done' }).click();
 
-	await expect(page.getByText('Delete this block and its 1 comment(s)?')).toBeVisible();
+	await expect(page.getByText('Delete this block and its 1 comment?')).toBeVisible();
+	await page.getByRole('dialog').getByRole('button', { name: 'Keep' }).click();
 	await expect(page.getByText('explain why')).toBeVisible();
-	await page.getByRole('button', { name: 'Keep' }).click();
 	await expect(blocks(page)).toHaveCount(6);
 });
 
@@ -219,7 +219,7 @@ test('ending the review from the browser leaves the file alone', async ({ page }
 
 	await editBlock(page, 1, 'Auth uses sessions.');
 	await page.getByRole('button', { name: 'End review' }).click();
-	await page.getByRole('button', { name: 'End review' }).click();
+	await page.getByRole('dialog').getByRole('button', { name: 'End review' }).click();
 
 	await expect(page.getByText('Review ended.')).toBeVisible();
 	expect(fileContents(review)).toBe(DOC);
@@ -255,11 +255,27 @@ test('a second review arrives in the tab that is already open', async ({ page })
 	await expect(page.getByRole('heading', { name: 'API' })).toBeVisible();
 });
 
+test.describe('in Korean', () => {
+	test.use({ locale: 'ko-KR' });
+
+	test('the interface speaks the language the browser asked for', async ({ page }) => {
+		const review = openReview(DOC);
+		await page.goto(review.url);
+
+		await expect(page.getByRole('button', { name: '제출' })).toBeVisible();
+		await expect(page.getByRole('button', { name: '리뷰 종료' })).toBeVisible();
+		await expect(page.getByText('문서 전체에 대해')).toBeVisible();
+
+		await page.getByRole('button', { name: '제출' }).click();
+		await expect(page.getByText('에이전트에게 보냈습니다.')).toBeVisible();
+	});
+});
+
 test('stopping the app from the browser stops the daemon', async ({ page }) => {
 	const review = openReview(DOC);
 	await page.goto(review.url);
 
-	await page.getByRole('button', { name: 'Stop the mdvl app' }).click();
+	await page.getByRole('button', { name: 'Stop app' }).click();
 	await expect(page.getByText('mdvl has stopped.')).toBeVisible();
 
 	await expect

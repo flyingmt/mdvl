@@ -6,13 +6,18 @@ import { unified } from 'unified';
 /** A human instruction for the Agent, anchored to a Block rather than a line. */
 export type Comment = { id: string; body: string };
 
+/** What a Block is, which decides how it is drawn. */
+export type Kind =
+	'heading' | 'paragraph' | 'list' | 'blockquote' | 'table' | 'code' | 'mermaid' | 'other';
+
 export type Block = {
 	id: string;
+	kind: Kind;
 	/** This Block's markdown, exactly as it appears in the file. */
 	source: string;
 	/** What separates this Block from the next. Kept so an untouched document rewrites byte for byte. */
 	gap: string;
-	/** The fence language, so a mermaid diagram can be told apart from a code sample. */
+	/** The fence language, shown alongside a code sample. */
 	language: string | null;
 	comments: Comment[];
 };
@@ -40,15 +45,30 @@ export function parseDocument(text: string): Document {
 		const from = node.position!.start.offset!;
 		const to = node.position!.end.offset!;
 		const next = index + 1 < nodes.length ? nodes[index + 1].position!.start.offset! : text.length;
+		const language = node.type === 'code' ? (node.lang ?? '') : null;
 		return {
 			id: nextId(),
+			kind: kindOf(node.type, language),
 			source: text.slice(from, to),
 			gap: text.slice(to, next),
-			language: node.type === 'code' ? (node.lang ?? '') : null,
+			language,
 			comments: []
 		};
 	});
 	return { prelude, blocks };
+}
+
+function kindOf(type: string, language: string | null): Kind {
+	if (type === 'code') return language === 'mermaid' ? 'mermaid' : 'code';
+	const known: Kind[] = ['heading', 'paragraph', 'list', 'blockquote', 'table'];
+	return known.find((kind) => kind === type) ?? 'other';
+}
+
+/** The text inside a fence, without its ``` lines. */
+export function fenceBody(source: string): string {
+	const lines = source.split('\n');
+	const closed = /^\s*(```|~~~)/.test(lines[lines.length - 1] ?? '');
+	return lines.slice(1, closed ? -1 : undefined).join('\n');
 }
 
 export function serialise(document: Document): string {

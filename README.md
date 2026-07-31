@@ -67,6 +67,11 @@ A debug build reads `web/build` from disk at run time rather than embedding it,
 so a frontend change needs `npm run build` and a refresh — not a Rust rebuild.
 Release builds embed it.
 
+For a live frontend loop, run `npm run dev` in `web/` and build the daemon with
+`--features dev-proxy`: it serves the page straight from Vite while the API keeps
+answering from the same origin, so nothing about authentication differs from a
+real build.
+
 The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary —
 [docs/adr](./docs/adr), which records the four decisions a reader would otherwise
 question, and [docs/design](./docs/design) for the reviewer's screen.

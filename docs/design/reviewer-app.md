@@ -47,17 +47,35 @@ something they need.
 
 ## Type and colour
 
-Neutral greys carry the whole interface. Colour is reserved for meaning:
+The palette is shadcn-svelte's neutral token set — `background`, `foreground`,
+`muted`, `border`, `ring`, `destructive`. Nothing hard-codes a grey, so the whole
+interface moves together. Colour outside those tokens is reserved for meaning:
 
-| Colour | Reserved for                                            |
-| ------ | ------------------------------------------------------- |
-| Amber  | Comments, and diagrams that would not draw               |
-| Red    | Destructive actions and their confirmations             |
-| Blue   | Links inside the document — the document's own, not ours |
+| Colour | Reserved for                                             |
+| ------ | -------------------------------------------------------- |
+| Amber  | Comments, and diagrams that would not draw                |
+| Red    | Destructive actions and their confirmations               |
+| Blue   | Links inside the document — the document's own, not ours  |
 
-Body text is the system UI stack at 17px/1.7; only code is monospaced. Headings
-are weight 600 with tightened tracking, sized 28/22/18 — enough to structure a
-document without turning it into a poster.
+Body text is Inter at 17px/1.7; only code is monospaced. Headings are weight 600
+with tightened tracking, sized 28/22/18 — enough to structure a document without
+turning it into a poster.
+
+## One component per Block kind
+
+`heading`, `paragraph`, `list`, `blockquote`, `table`, `code`, `mermaid`. Each
+owns how its kind is drawn, and its CSS is named after it, so changing how lists
+look is one file and one rule block rather than a hunt through a shared sheet.
+Three of them earn the split outright: a table scrolls inside its own box rather
+than pushing the document sideways, a code fence bypasses the markdown pipeline
+so its text survives byte for byte, and a diagram is drawn by mermaid.
+
+## Language
+
+Wording lives in one dictionary keyed by an English source of truth; every other
+language is typed against it, so a missing key fails the build rather than the
+reviewer. The language is taken from the browser — a reviewer never has to find
+a setting.
 
 ## Interaction rules
 
@@ -85,11 +103,9 @@ document without turning it into a poster.
 
 ## Deliberate omissions
 
-- **No dark mode.** Not asked for, and one theme is one thing to get right.
+- **No dark mode.** The tokens exist for it, but the page is pinned light: one
+  theme is one thing to get right, and nothing asked for two.
 - **No syntax highlighting in code fences.** The reviewer is judging prose; a
   highlighter is a dependency and a distraction.
-- **No component per Block kind.** One renderer handles every kind that is not a
-  diagram, because they all come out of the same sanitised HTML pipeline. Seven
-  components would have been seven ways to render the same string.
-- **No design tokens or component library.** The interface is one screen; a token
-  layer would be indirection with a single consumer.
+- **No language picker.** The browser already knows.
+- **No reordering by dragging.** Moving a section is what a comment is for.

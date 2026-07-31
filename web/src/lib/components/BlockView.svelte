@@ -2,10 +2,18 @@
 	import { MessageSquarePlus, Pencil, Trash2, X } from '@lucide/svelte';
 	import { newComment } from '$lib/api';
 	import type { Block, Comment } from '$lib/blocks';
+	import { t } from '$lib/i18n';
 	import { editorKeys, takeFocus } from '$lib/keys';
-	import { renderMarkdown } from '$lib/render';
-	import Button from './Button.svelte';
-	import Mermaid from './Mermaid.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import Blockquote from './blocks/Blockquote.svelte';
+	import CodeFence from './blocks/CodeFence.svelte';
+	import Heading from './blocks/Heading.svelte';
+	import List from './blocks/List.svelte';
+	import Mermaid from './blocks/Mermaid.svelte';
+	import Paragraph from './blocks/Paragraph.svelte';
+	import Table from './blocks/Table.svelte';
 
 	let {
 		block,
@@ -24,16 +32,6 @@
 	let commenting = $state(false);
 	let commentDraft = $state('');
 	let confirmingRemoval = $state(false);
-
-	const isDiagram = $derived(block.language === 'mermaid');
-	const html = $derived(isDiagram ? '' : renderMarkdown(block.source));
-
-	/** The text inside a fence, without its ``` lines. */
-	const diagram = $derived.by(() => {
-		const lines = block.source.split('\n');
-		const closed = /^\s*(```|~~~)/.test(lines[lines.length - 1] ?? '');
-		return lines.slice(1, closed ? -1 : undefined).join('\n');
-	});
 
 	function startEditing() {
 		draft = block.source;
@@ -64,7 +62,7 @@
 	}
 
 	function remove() {
-		if (block.comments.length > 0 && !confirmingRemoval) {
+		if (block.comments.length > 0) {
 			confirmingRemoval = true;
 			return;
 		}
@@ -74,91 +72,104 @@
 
 <div class="group relative" data-testid="block">
 	<div
-		class="absolute -top-2 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
+		class="absolute -top-3 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
 	>
 		{#if !editing}
-			<Button onclick={startEditing} aria-label="Edit this block" title="Edit">
-				<Pencil size={15} aria-hidden="true" />
+			<Button variant="outline" size="icon-sm" onclick={startEditing} aria-label={t.editBlock}>
+				<Pencil aria-hidden="true" />
 			</Button>
 			<Button
+				variant="outline"
+				size="icon-sm"
 				onclick={() => (commenting = true)}
-				aria-label="Comment on this block"
-				title="Comment"
+				aria-label={t.commentOnBlock}
 			>
-				<MessageSquarePlus size={15} aria-hidden="true" />
+				<MessageSquarePlus aria-hidden="true" />
 			</Button>
-			<Button variant="danger" onclick={remove} aria-label="Delete this block" title="Delete">
-				<Trash2 size={15} aria-hidden="true" />
+			<Button variant="destructive" size="icon-sm" onclick={remove} aria-label={t.deleteBlock}>
+				<Trash2 aria-hidden="true" />
 			</Button>
 		{/if}
 	</div>
 
 	{#if editing}
-		<div class="rounded-lg ring-2 ring-neutral-900">
-			<textarea
+		<div class="rounded-lg ring-2 ring-ring">
+			<Textarea
 				bind:value={draft}
 				onkeydown={editorKeys(applyEdit, () => (editing = false))}
 				{@attach takeFocus}
 				rows={Math.max(3, draft.split('\n').length + 1)}
-				aria-label="Markdown source of this block"
-				class="w-full resize-y rounded-t-lg bg-white p-3 font-mono text-sm leading-relaxed outline-none"
-			></textarea>
-			<div
-				class="flex items-center gap-2 rounded-b-lg border-t border-neutral-200 bg-neutral-50 px-3 py-2"
-			>
-				<Button variant="primary" onclick={applyEdit}>Done</Button>
-				<Button onclick={() => (editing = false)}>Cancel</Button>
-				<span class="text-xs text-neutral-500">⌘↵ to finish · Esc to discard</span>
+				aria-label={t.blockSource}
+				class="rounded-b-none border-0 font-mono text-sm leading-relaxed focus-visible:ring-0"
+			/>
+			<div class="flex items-center gap-2 rounded-b-lg border-t border-border bg-muted px-3 py-2">
+				<Button size="sm" onclick={applyEdit}>{t.done}</Button>
+				<Button variant="outline" size="sm" onclick={() => (editing = false)}>{t.cancel}</Button>
+				<span class="text-xs text-muted-foreground">{t.editorHint}</span>
 			</div>
 		</div>
-	{:else if isDiagram}
-		<Mermaid source={diagram} />
+	{:else if block.kind === 'heading'}
+		<Heading source={block.source} />
+	{:else if block.kind === 'list'}
+		<List source={block.source} />
+	{:else if block.kind === 'blockquote'}
+		<Blockquote source={block.source} />
+	{:else if block.kind === 'table'}
+		<Table source={block.source} />
+	{:else if block.kind === 'mermaid'}
+		<Mermaid source={block.source} />
+	{:else if block.kind === 'code'}
+		<CodeFence source={block.source} language={block.language} />
 	{:else}
-		<!-- Sanitised in render.ts: the file is written by an agent and is not trusted. -->
-		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<div class="rendered">{@html html}</div>
-	{/if}
-
-	{#if confirmingRemoval}
-		<div class="mt-2 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
-			<span>Delete this block and its {block.comments.length} comment(s)?</span>
-			<Button variant="danger" onclick={onremove}>Delete</Button>
-			<Button onclick={() => (confirmingRemoval = false)}>Keep</Button>
-		</div>
+		<Paragraph source={block.source} />
 	{/if}
 
 	{#if block.comments.length > 0 || commenting}
 		<ul class="mt-2 space-y-1.5 border-l-2 border-amber-400 pl-3">
 			{#each block.comments as comment (comment.id)}
-				<li class="flex items-start gap-2 text-sm text-neutral-800">
+				<li class="flex items-start gap-2 text-sm">
 					<span class="flex-1 whitespace-pre-wrap">{comment.body}</span>
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="icon-xs"
 						onclick={() => dropComment(comment.id)}
-						aria-label="Remove this comment"
-						class="rounded px-1 text-neutral-400 hover:text-red-700"
+						aria-label={t.removeComment}
 					>
-						<X size={14} aria-hidden="true" />
-					</button>
+						<X aria-hidden="true" />
+					</Button>
 				</li>
 			{/each}
 			{#if commenting}
 				<li>
-					<textarea
+					<Textarea
 						bind:value={commentDraft}
 						onkeydown={editorKeys(addComment, () => (commenting = false))}
 						{@attach takeFocus}
-						rows="2"
-						placeholder="What should the agent do here?"
-						aria-label="New comment on this block"
-						class="w-full resize-y rounded-md bg-white p-2 text-sm ring-1 ring-neutral-300 outline-none focus:ring-neutral-900"
-					></textarea>
+						rows={2}
+						placeholder={t.newCommentPlaceholder}
+						aria-label={t.newCommentLabel}
+						class="text-sm"
+					/>
 					<div class="mt-1 flex gap-2">
-						<Button variant="primary" onclick={addComment}>Add comment</Button>
-						<Button onclick={() => (commenting = false)}>Cancel</Button>
+						<Button size="sm" onclick={addComment}>{t.addComment}</Button>
+						<Button variant="outline" size="sm" onclick={() => (commenting = false)}>
+							{t.cancel}
+						</Button>
 					</div>
 				</li>
 			{/if}
 		</ul>
 	{/if}
 </div>
+
+<Dialog.Root bind:open={confirmingRemoval}>
+	<Dialog.Content>
+		<Dialog.Header>
+			<Dialog.Title>{t.deleteWithComments(block.comments.length)}</Dialog.Title>
+		</Dialog.Header>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (confirmingRemoval = false)}>{t.keepBlock}</Button>
+			<Button variant="destructive" onclick={onremove}>{t.deleteAnyway}</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

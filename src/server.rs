@@ -13,6 +13,7 @@ use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
+#[cfg(not(feature = "dev-proxy"))]
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -22,9 +23,14 @@ use crate::review::{Review, State as ReviewState};
 use crate::root::ProjectRoot;
 
 /// The reviewer's app, baked into the binary by `web/build`.
+#[cfg(not(feature = "dev-proxy"))]
 #[derive(RustEmbed)]
 #[folder = "web/build"]
 struct Assets;
+
+/// Where `npm run dev` listens, for builds carrying the `dev-proxy` feature.
+#[cfg(feature = "dev-proxy")]
+const VITE: &str = "http://127.0.0.1:5273";
 
 /// How long a daemon lingers with nothing to review before stepping aside.
 const IDLE_LIMIT: Duration = Duration::from_secs(30 * 60);
@@ -211,6 +217,7 @@ fn addressed_to_us(headers: &HeaderMap, port: u16) -> bool {
     origin_belongs && host_belongs
 }
 
+#[cfg(not(feature = "dev-proxy"))]
 async fn asset(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     embedded(path)
@@ -220,10 +227,46 @@ async fn asset(uri: Uri) -> Response {
         })
 }
 
+#[cfg(not(feature = "dev-proxy"))]
 fn embedded(path: &str) -> Option<Response> {
     let file = Assets::get(path)?;
     let mime = file.metadata.mimetype().to_string();
     Some(([(header::CONTENT_TYPE, mime)], file.data.into_owned()).into_response())
+}
+
+/// Hand the page straight through from Vite so a frontend edit is one refresh
+/// away. The API keeps answering from this same origin, so nothing about
+/// authentication changes between development and a real build.
+#[cfg(feature = "dev-proxy")]
+async fn asset(uri: Uri) -> Response {
+    let target = format!("{VITE}{}", uri.path_and_query().map_or("/", |p| p.as_str()));
+    let fetched = tokio::task::spawn_blocking(move || {
+        let mut response = ureq::get(&target).call()?;
+        let mime = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("text/html")
+            .to_string();
+        let status = response.status().as_u16();
+        let body = response.body_mut().read_to_vec()?;
+        Ok::<_, anyhow::Error>((status, mime, body))
+    })
+    .await;
+
+    match fetched {
+        Ok(Ok((status, mime, body))) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+            [(header::CONTENT_TYPE, mime)],
+            body,
+        )
+            .into_response(),
+        _ => (
+            StatusCode::BAD_GATEWAY,
+            format!("dev-proxy is on but nothing is serving {VITE} — run `npm run dev` in web/"),
+        )
+            .into_response(),
+    }
 }
 
 async fn retire_when_idle(app: Arc<App>) {

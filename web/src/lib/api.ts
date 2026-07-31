@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Comment } from './blocks';
 
 const TOKEN_KEY = 'mdvl-token';
@@ -25,7 +26,9 @@ async function redeemTicket(): Promise<void> {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ ticket: found[1] })
 	});
-	if (response.ok) sessionStorage.setItem(TOKEN_KEY, (await response.json()).token);
+	if (!response.ok) return;
+	const bought = Bought.parse(await response.json());
+	sessionStorage.setItem(TOKEN_KEY, bought.token);
 }
 
 function token(): string {
@@ -49,21 +52,40 @@ async function call(path: string, init: RequestInit = {}) {
 	return response.status === 204 ? null : response.json();
 }
 
-export type ReviewState = 'pending' | 'submitted' | 'cancelled' | 'conflict';
+/**
+ * Everything crossing the wire is checked on arrival. The daemon is trusted,
+ * but a version of it that disagrees with this page should say so here rather
+ * than surface as an undefined three components down.
+ */
+const Bought = z.object({ token: z.string() });
 
 /**
  * The reviewer's work-in-progress that isn't part of the file — parked with the
  * daemon so closing the tab doesn't cost them their comments.
  */
-export type Draft = { comments: string[][]; overall: string };
+const DraftSchema = z.object({
+	comments: z.array(z.array(z.string())),
+	overall: z.string()
+});
 
-export type LoadedReview = {
-	id: string;
-	path: string;
-	content: string;
-	state: ReviewState;
-	draft: Draft | null;
-};
+const LoadedReviewSchema = z.object({
+	id: z.string(),
+	path: z.string(),
+	content: z.string(),
+	state: z.enum(['pending', 'submitted', 'cancelled', 'conflict']),
+	draft: DraftSchema.nullable()
+});
+
+const SubmitOutcomeSchema = z.object({
+	status: z.enum(['submitted', 'conflict']),
+	conflict_copy: z.string().optional()
+});
+
+const ArrivingReviewSchema = z.object({ kind: z.string(), id: z.string() });
+
+export type Draft = z.infer<typeof DraftSchema>;
+export type LoadedReview = z.infer<typeof LoadedReviewSchema>;
+export type SubmitOutcome = z.infer<typeof SubmitOutcomeSchema>;
 
 export type OutgoingComment = {
 	lines: [number, number];
@@ -71,21 +93,19 @@ export type OutgoingComment = {
 	body: string;
 };
 
-export type SubmitOutcome = {
-	status: 'submitted' | 'conflict';
-	conflict_copy?: string;
-};
-
-export const fetchReview = (id: string): Promise<LoadedReview> => call(`/reviews/${id}`);
+export const fetchReview = async (id: string): Promise<LoadedReview> =>
+	LoadedReviewSchema.parse(await call(`/reviews/${id}`));
 
 export const keepDraft = (id: string, content: string, draft: Draft): Promise<null> =>
 	call(`/reviews/${id}/draft`, { method: 'PUT', body: JSON.stringify({ content, draft }) });
 
-export const submitReview = (
+export const submitReview = async (
 	id: string,
 	body: { content: string; comments: OutgoingComment[]; overall: string }
 ): Promise<SubmitOutcome> =>
-	call(`/reviews/${id}/submit`, { method: 'POST', body: JSON.stringify(body) });
+	SubmitOutcomeSchema.parse(
+		await call(`/reviews/${id}/submit`, { method: 'POST', body: JSON.stringify(body) })
+	);
 
 export const cancelReview = (id: string): Promise<null> =>
 	call(`/reviews/${id}/cancel`, { method: 'POST' });
@@ -100,8 +120,8 @@ export async function watchForReviews(onReview: (id: string) => void): Promise<(
 	await authenticate();
 	const source = new EventSource(`/api/events?token=${encodeURIComponent(token())}`);
 	source.onmessage = (message) => {
-		const event = JSON.parse(message.data);
-		if (event.kind === 'review') onReview(event.id);
+		const event = ArrivingReviewSchema.safeParse(JSON.parse(message.data));
+		if (event.success && event.data.kind === 'review') onReview(event.data.id);
 	};
 	return () => source.close();
 }

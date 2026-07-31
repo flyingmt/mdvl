@@ -6,6 +6,11 @@ description = "Hand a markdown file to a human, wait, and get back their judgeme
 license = "MIT"
 repository = "https://github.com/flyingmt/md-view-linker"
 
+[features]
+# Serve the reviewer's app from a running `npm run dev` instead of the build
+# directory, so frontend work does not go through a Rust rebuild.
+dev-proxy = []
+
 [dependencies]
 anyhow = "1"
 axum = "0.8"
