@@ -86,7 +86,9 @@ pub struct ExchangeRequest {
 
 /// The tab trades the single-use ticket from its URL for the daemon's token.
 /// Opening a browser puts the ticket in a command line every local user can
-/// read, so it must be worth nothing once spent.
+/// read; spending it once and expiring it in a minute does not make reading it
+/// harmless, but it turns a secret that lasts as long as the daemon into a race
+/// the reader has to win, and losing that race is visible to the human.
 pub async fn exchange(
     State(app): State<Arc<App>>,
     Json(body): Json<ExchangeRequest>,
@@ -160,12 +162,12 @@ pub async fn submit(
         }
         match submit::apply(&review.absolute, &review.start_sha, &body.content).map_err(refused)? {
             Written::Applied => {
-                review.accept(body.content, body.comments, body.overall);
+                review.submit(body.content, body.comments, body.overall);
                 json!({ "status": "submitted" })
             }
             Written::Conflict(copy) => {
                 let copy = app.root.relative(&copy);
-                review.park(body.content, copy.clone());
+                review.conflict(body.content, copy.clone());
                 json!({ "status": "conflict", "conflict_copy": copy })
             }
         }

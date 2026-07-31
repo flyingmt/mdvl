@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Plus } from '@lucide/svelte';
 	import { t } from '$lib/i18n';
-	import { editorKeys, takeFocus } from '$lib/keys';
+	import { editorKeys, takeFocus } from '$lib/editors';
 	import { Button } from '$lib/components/ui/button';
 	import { Textarea } from '$lib/components/ui/textarea';
 

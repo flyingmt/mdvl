@@ -40,10 +40,11 @@
 		let close = () => {};
 		api
 			.watchForReviews((arriving) => goto(resolve('/r/[id]', { id: arriving })))
-			.then((stop) => (close = stop));
+			.then((stop) => (close = stop))
+			.catch((error) => toast.error(t.couldNotOpen, { description: describe(error) }));
 		// A tab being hidden may be a tab being closed, and the last keystroke is
-		// still sitting in the debounce.
-		const flush = () => void keep();
+		// still sitting in the debounce. The request has to outlive the page.
+		const flush = () => void keep(true);
 		addEventListener('pagehide', flush);
 		addEventListener('visibilitychange', flush);
 		return () => {
@@ -67,7 +68,7 @@
 			overall = review.draft?.overall ?? '';
 			outcome = review.state === 'pending' ? null : { status: review.state };
 		} catch (error) {
-			toast.error(describe(error));
+			toast.error(t.couldNotLoad, { description: describe(error) });
 		} finally {
 			loading = false;
 		}
@@ -89,14 +90,19 @@
 
 	let pendingKeep: ReturnType<typeof setTimeout>;
 
-	function keep() {
+	function keep(survivingTheTab = false) {
 		clearTimeout(pendingKeep);
 		if (!id || outcome) return Promise.resolve(null);
 		return api
-			.keepDraft(id, serialise(doc), {
-				comments: doc.blocks.map((block) => block.comments.map((comment) => comment.body)),
-				overall
-			})
+			.keepDraft(
+				id,
+				serialise(doc),
+				{
+					comments: doc.blocks.map((block) => block.comments.map((comment) => comment.body)),
+					overall
+				},
+				survivingTheTab
+			)
 			.catch(() => null);
 	}
 
@@ -145,7 +151,7 @@
 			});
 			outcome = { status: result.status, conflictCopy: result.conflict_copy };
 		} catch (error) {
-			toast.error(describe(error));
+			toast.error(t.couldNotSubmit, { description: describe(error) });
 		}
 	}
 
@@ -156,7 +162,7 @@
 			await api.cancelReview(id);
 			outcome = { status: 'cancelled' };
 		} catch (error) {
-			toast.error(describe(error));
+			toast.error(t.couldNotEnd, { description: describe(error) });
 		}
 	}
 
@@ -199,11 +205,10 @@
 					<p class="mt-1 text-muted-foreground">{t.endedBody}</p>
 				{:else}
 					<p class="font-medium text-amber-900">{t.conflictTitle}</p>
-					<p class="mt-1 text-muted-foreground">
-						{t.conflictBefore}
-						<code class="rounded bg-muted px-1 py-0.5 font-mono">{outcome.conflictCopy}</code>
-						{t.conflictAfter}
-					</p>
+					<p class="mt-1 text-muted-foreground">{t.conflictKept}</p>
+					<code class="mt-2 inline-block rounded bg-muted px-1.5 py-1 font-mono"
+						>{outcome.conflictCopy}</code
+					>
 				{/if}
 			</div>
 		{:else}

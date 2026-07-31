@@ -3,7 +3,7 @@
 	import { newComment } from '$lib/api';
 	import type { Block, Comment } from '$lib/blocks';
 	import { t } from '$lib/i18n';
-	import { editorKeys, takeFocus } from '$lib/keys';
+	import { editorKeys, takeFocus } from '$lib/editors';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Textarea } from '$lib/components/ui/textarea';

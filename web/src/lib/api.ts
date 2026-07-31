@@ -3,42 +3,54 @@ import type { Comment } from './blocks';
 
 const TOKEN_KEY = 'mdvl-token';
 
-let arriving: Promise<void> | null = null;
+let authenticating: Promise<void> | null = null;
 
 /**
  * The daemon opens this tab with a single-use ticket in the URL fragment, which
- * never reaches the server. Trade it for the real token once, keep that in
- * session storage so a reload still works, and take the spent ticket out of the
- * address bar.
+ * never reaches the server. Trade it for the real token once and keep that
+ * against this origin — a daemon's port and token live and die together, so a
+ * reviewer who closes the tab can reopen the same address and carry on.
  */
 export function authenticate(): Promise<void> {
-	arriving ??= redeemTicket();
-	return arriving;
+	authenticating ??= redeemTicket();
+	return authenticating;
 }
 
 async function redeemTicket(): Promise<void> {
 	const found = /[#&]k=([a-f0-9]+)/.exec(location.hash);
-	if (!found) return;
-	history.replaceState(null, '', location.pathname + location.search);
+	if (!found) {
+		if (!token()) throw new Error('this tab was opened without a way in');
+		return;
+	}
 
 	const response = await fetch('/api/exchange', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ ticket: found[1] })
 	});
-	if (!response.ok) return;
-	const bought = Bought.parse(await response.json());
-	sessionStorage.setItem(TOKEN_KEY, bought.token);
+	if (response.ok) {
+		localStorage.setItem(TOKEN_KEY, ExchangedToken.parse(await response.json()).token);
+	} else if (!token()) {
+		// Leave the ticket in the address bar: it is the only way in, and a reload
+		// is the reviewer's obvious next move.
+		throw new Error((await response.json().catch(() => ({}))).error ?? response.statusText);
+	}
+	// A spent ticket is ordinary when a closed tab is reopened from history — the
+	// token already held is the one that counts. Either way it is finished with.
+	history.replaceState(null, '', location.pathname + location.search);
 }
 
 function token(): string {
-	return sessionStorage.getItem(TOKEN_KEY) ?? '';
+	return localStorage.getItem(TOKEN_KEY) ?? '';
 }
 
 async function call(path: string, init: RequestInit = {}) {
 	await authenticate();
 	const response = await fetch(`/api${path}`, {
 		...init,
+		// `keepalive` lets a request survive the page that started it, which is
+		// the whole point when the reviewer is closing the tab.
+		keepalive: init.keepalive ?? false,
 		headers: {
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${token()}`,
@@ -57,7 +69,7 @@ async function call(path: string, init: RequestInit = {}) {
  * but a version of it that disagrees with this page should say so here rather
  * than surface as an undefined three components down.
  */
-const Bought = z.object({ token: z.string() });
+const ExchangedToken = z.object({ token: z.string() });
 
 /**
  * The reviewer's work-in-progress that isn't part of the file — parked with the
@@ -96,8 +108,17 @@ export type OutgoingComment = {
 export const fetchReview = async (id: string): Promise<LoadedReview> =>
 	LoadedReviewSchema.parse(await call(`/reviews/${id}`));
 
-export const keepDraft = (id: string, content: string, draft: Draft): Promise<null> =>
-	call(`/reviews/${id}/draft`, { method: 'PUT', body: JSON.stringify({ content, draft }) });
+export const keepDraft = (
+	id: string,
+	content: string,
+	draft: Draft,
+	survivingTheTab = false
+): Promise<null> =>
+	call(`/reviews/${id}/draft`, {
+		method: 'PUT',
+		body: JSON.stringify({ content, draft }),
+		keepalive: survivingTheTab
+	});
 
 export const submitReview = async (
 	id: string,

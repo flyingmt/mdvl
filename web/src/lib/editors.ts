@@ -1,7 +1,9 @@
 /**
- * Every small editor in the review behaves the same way: Escape backs out,
- * ⌘/Ctrl+Enter accepts. Written once so they cannot drift apart.
+ * How every small editor in the review behaves, written once so the three of
+ * them cannot drift apart.
  */
+
+/** Escape backs out, ⌘/Ctrl+Enter accepts. */
 export function editorKeys(accept: () => void, abandon: () => void) {
 	return (event: KeyboardEvent) => {
 		if (event.key === 'Escape') abandon();

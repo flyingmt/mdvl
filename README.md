@@ -32,6 +32,9 @@ so the agent cannot invoke it on its own — you start reviews, not the agent.
 | `mdvl wait <id> [--timeout]` | Prints the result as JSON. Exit 0/2/3/4.                 |
 | `mdvl install`             | Installs the review skill.                                 |
 
+Set `MDVL_NO_BROWSER=1` and `review` prints the reviewer's URL on stderr instead
+of opening anything — for machines with no browser to open, and for the tests.
+
 `wait` exits `0` when the human submitted, `2` while they are still reading (run
 it again), `3` if they ended the review, and `4` if the file changed underneath
 them. On `submitted` the result carries their comments, each with the line range

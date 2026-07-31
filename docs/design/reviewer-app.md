@@ -83,12 +83,14 @@ a setting.
   they are changing, not a rich-text approximation of it (ADR-0001 puts the
   parser in the browser; that does not make this a word processor).
 - **Every small editor behaves identically**: ⌘/Ctrl+Enter accepts, Escape backs
-  out. Implemented once, in `keys.ts`.
-- **Opening an editor moves focus into it.** The reviewer asked for it; leaving
-  focus behind would mean a second click or tab for every edit.
-- **Destructive actions confirm inline**, not in a modal. The confirmation appears
-  where the thing being destroyed is, so it is obvious what is at stake, and it
-  cannot trap focus.
+  out, and opening one moves focus into it. Implemented once, in `editors.ts`.
+- **Destructive actions confirm in a modal.** Losing comments or a whole review
+  is worth stopping for, and a modal is the one thing that cannot be missed while
+  the reviewer's attention is elsewhere in a long document. It traps focus on
+  purpose: while the question is open, answering it is the only thing to do.
+- **Only two things confirm**: deleting a Block that carries comments, and ending
+  a review. Deleting an empty Block does not — there is nothing to lose that
+  re-typing does not restore.
 - **Nothing is written to the file until Submit.** The reviewer can experiment.
 
 ## Accessibility

@@ -154,24 +154,29 @@ test('emptying a commented block asks before taking the comments with it', async
 	await expect(blocks(page)).toHaveCount(6);
 });
 
-test('work survives closing and reopening the tab', async ({ page }) => {
+test('work survives the tab actually being closed', async ({ context }) => {
 	const review = openReview(DOC);
-	await page.goto(review.url);
+	const first = await context.newPage();
+	await first.goto(review.url);
 
-	await editBlock(page, 1, 'Auth uses sessions.');
-	await commentOn(page, 4, 'cut this');
-	await page
+	await editBlock(first, 1, 'Auth uses sessions.');
+	await commentOn(first, 4, 'cut this');
+	await first
 		.getByRole('textbox', { name: 'Anything about the document as a whole?' })
 		.fill('too long');
-	// What a closing tab gets: no unload handler is guaranteed to finish, so the
-	// app flushes on hide.
-	await page.evaluate(() => dispatchEvent(new Event('pagehide')));
-	await page.reload();
+	// Closed for real, not a synthetic `pagehide` on a document that stays alive.
+	// Over loopback a plain fetch usually reaches the daemon before the page is
+	// torn down, so this cannot prove `keepalive` is what saved the work — only
+	// that closing the tab does not cost it.
+	await first.close();
 
-	await expect(page.getByText('Auth uses sessions.')).toBeVisible();
-	await expect(page.getByText('cut this')).toBeVisible();
+	const second = await context.newPage();
+	await second.goto(review.url);
+
+	await expect(second.getByText('Auth uses sessions.')).toBeVisible();
+	await expect(second.getByText('cut this')).toBeVisible();
 	await expect(
-		page.getByRole('textbox', { name: 'Anything about the document as a whole?' })
+		second.getByRole('textbox', { name: 'Anything about the document as a whole?' })
 	).toHaveValue('too long');
 });
 

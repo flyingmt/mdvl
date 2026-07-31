@@ -13,8 +13,13 @@ const en = {
 	endedTitle: 'Review ended.',
 	endedBody: 'Nothing was written to the file.',
 	conflictTitle: 'The file changed while you were reviewing.',
-	conflictBefore: 'Nothing was overwritten. Your version was kept at',
-	conflictAfter: '— the agent has been told where to find it.',
+	conflictKept:
+		'Nothing was overwritten. Your version was kept here, and the agent has been told where to find it:',
+
+	couldNotOpen: 'This review could not be opened.',
+	couldNotLoad: 'This review could not be loaded.',
+	couldNotSubmit: 'Your review could not be sent.',
+	couldNotEnd: 'The review could not be ended.',
 
 	overallLabel: 'Anything about the document as a whole?',
 	overallPlaceholder: 'Optional — e.g. too long, wrong audience, missing a section',
@@ -51,7 +56,7 @@ const en = {
 
 	nothingTitle: 'Nothing to review',
 	nothingBody:
-		'This tab opens when an agent hands you a markdown file. Ask yours to start a review — it runs'
+		'This tab opens when an agent hands you a markdown file. Ask yours to start a review, which it does by running:'
 } as const;
 
 /** Same keys, same argument shapes — but any wording. */
@@ -71,8 +76,13 @@ const ko: Dictionary = {
 	endedTitle: '리뷰를 끝냈습니다.',
 	endedBody: '파일에는 아무것도 쓰지 않았습니다.',
 	conflictTitle: '리뷰하는 동안 파일이 바뀌었습니다.',
-	conflictBefore: '아무것도 덮어쓰지 않았습니다. 작업하신 내용은 여기에 남겼습니다:',
-	conflictAfter: '— 에이전트에게 이 위치를 알렸습니다.',
+	conflictKept:
+		'아무것도 덮어쓰지 않았습니다. 작업하신 내용은 아래에 남겼고, 에이전트에게 그 위치를 알렸습니다:',
+
+	couldNotOpen: '이 리뷰를 열 수 없습니다.',
+	couldNotLoad: '이 리뷰를 불러올 수 없습니다.',
+	couldNotSubmit: '리뷰를 보내지 못했습니다.',
+	couldNotEnd: '리뷰를 끝내지 못했습니다.',
 
 	overallLabel: '문서 전체에 대해 하고 싶은 말이 있나요?',
 	overallPlaceholder: '선택 사항 — 예: 너무 길다, 대상 독자가 틀렸다, 빠진 장이 있다',
@@ -108,7 +118,7 @@ const ko: Dictionary = {
 
 	nothingTitle: '리뷰할 것이 없습니다',
 	nothingBody:
-		'에이전트가 마크다운 파일을 건네면 이 탭이 열립니다. 에이전트에게 리뷰를 시작해 달라고 하세요 — 다음을 실행합니다:'
+		'에이전트가 마크다운 파일을 건네면 이 탭이 열립니다. 에이전트에게 리뷰를 시작해 달라고 하세요. 다음을 실행합니다:'
 };
 
 const dictionaries: Record<string, Dictionary> = { en, ko };

@@ -173,6 +173,24 @@ fn the_api_is_closed_to_requests_without_the_daemons_token() {
 }
 
 #[test]
+fn a_token_in_the_query_string_opens_only_the_event_stream() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+    let query = format!("token={}", h.token);
+
+    // The stream is the one request a browser cannot put a header on.
+    let stream = status_of(ureq::get(h.url(&format!("/api/events?{query}"))));
+    let review = status_of(ureq::get(h.url(&format!("/api/reviews/{id}?{query}"))));
+    let health = status_of(ureq::get(h.url(&format!("/api/health?{query}"))));
+
+    assert_eq!(stream, 200);
+    assert_eq!(
+        review, 401,
+        "a query-string token must not reach anything but the stream"
+    );
+    assert_eq!(health, 401);
+}
+
+#[test]
 fn the_api_is_closed_to_pages_served_from_another_origin() {
     let (h, id) = Harness::with_doc("plan.md", DOC);
 
@@ -243,6 +261,29 @@ fn install_places_the_skill_in_the_agent_tooling_that_is_already_there() {
         !root.join(".agents").exists(),
         "tooling directories that are not there must not be invented"
     );
+}
+
+#[test]
+fn a_codex_prompt_gets_the_skill_without_frontmatter_it_cannot_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    fs::create_dir(root.join(".git")).unwrap();
+    fs::create_dir_all(root.join(".codex/prompts")).unwrap();
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_mdvl"))
+        .arg("install")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+
+    let prompt = fs::read_to_string(root.join(".codex/prompts/md-review.md")).unwrap();
+    assert!(out.status.success());
+    assert!(prompt.starts_with("# Markdown review"));
+    assert!(
+        !prompt.contains("disable-model-invocation"),
+        "frontmatter this tooling does not read would show up as body text"
+    );
+    assert!(prompt.contains("mdvl wait"));
 }
 
 #[test]

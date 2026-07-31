@@ -71,7 +71,7 @@ impl Review {
     }
 
     /// The human finished: their text is on disk and their Comments are released.
-    pub fn accept(&mut self, content: String, comments: Vec<Comment>, overall: String) {
+    pub fn submit(&mut self, content: String, comments: Vec<Comment>, overall: String) {
         self.file_edited = content != self.original;
         self.working = content;
         self.comments = comments;
@@ -80,7 +80,7 @@ impl Review {
     }
 
     /// Someone else changed the file first, so the human's version waits elsewhere.
-    pub fn park(&mut self, content: String, copy: String) {
+    pub fn conflict(&mut self, content: String, copy: String) {
         self.working = content;
         self.conflict_copy = Some(copy);
         self.state = State::Conflict;
