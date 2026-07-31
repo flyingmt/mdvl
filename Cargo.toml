@@ -1,0 +1,26 @@
+[package]
+name = "mdvl"
+version = "0.1.0"
+edition = "2024"
+description = "Hand a markdown file to a human, wait, and get back their judgement."
+license = "MIT"
+repository = "https://github.com/flyingmt/md-view-linker"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+getrandom = "0.4"
+open = "5"
+rust-embed = { version = "8", features = ["mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+ureq = { version = "3", default-features = false, features = ["json"] }
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
+ureq = { version = "3", default-features = false, features = ["json"] }
