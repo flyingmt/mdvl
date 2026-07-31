@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import * as api from '$lib/api';
@@ -33,7 +34,7 @@
 		document_.blocks.reduce((total, block) => total + block.comments.length, 0)
 	);
 
-	onMount(() => api.watchForReviews((arriving) => goto(`/r/${arriving}`)));
+	onMount(() => api.watchForReviews((arriving) => goto(resolve('/r/[id]', { id: arriving }))));
 
 	$effect(() => {
 		void load(id);
@@ -166,7 +167,9 @@
 			<div class="rounded-lg border border-neutral-200 bg-white p-5 text-sm">
 				{#if outcome.status === 'submitted'}
 					<p class="font-medium">Sent to the agent.</p>
-					<p class="mt-1 text-neutral-600">Your edits are saved. You can go back to the agent now.</p>
+					<p class="mt-1 text-neutral-600">
+						Your edits are saved. You can go back to the agent now.
+					</p>
 				{:else if outcome.status === 'cancelled'}
 					<p class="font-medium">Review ended.</p>
 					<p class="mt-1 text-neutral-600">Nothing was written to the file.</p>
@@ -208,9 +211,7 @@
 	</main>
 
 	{#if !outcome && !loading && !problem && !stopped}
-		<footer
-			class="sticky bottom-0 border-t border-neutral-200 bg-white/90 px-4 py-3 backdrop-blur"
-		>
+		<footer class="sticky bottom-0 border-t border-neutral-200 bg-white/90 px-4 py-3 backdrop-blur">
 			<div class="mx-auto flex w-full max-w-[46rem] items-center gap-3">
 				<Button variant="primary" onclick={submit}>Submit</Button>
 				{#if confirmingEnd}

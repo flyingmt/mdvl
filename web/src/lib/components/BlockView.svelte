@@ -69,10 +69,16 @@
 </script>
 
 <div class="group relative" data-testid="block">
-	<div class="absolute -top-2 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100">
+	<div
+		class="absolute -top-2 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
+	>
 		{#if !editing}
 			<Button onclick={startEditing} aria-label="Edit this block" title="Edit">✎</Button>
-			<Button onclick={() => (commenting = true)} aria-label="Comment on this block" title="Comment">
+			<Button
+				onclick={() => (commenting = true)}
+				aria-label="Comment on this block"
+				title="Comment"
+			>
 				💬
 			</Button>
 			<Button variant="danger" onclick={remove} aria-label="Delete this block" title="Delete">
@@ -92,7 +98,9 @@
 				aria-label="Markdown source of this block"
 				class="w-full resize-y rounded-t-lg bg-white p-3 font-mono text-sm leading-relaxed outline-none"
 			></textarea>
-			<div class="flex items-center gap-2 rounded-b-lg border-t border-neutral-200 bg-neutral-50 px-3 py-2">
+			<div
+				class="flex items-center gap-2 rounded-b-lg border-t border-neutral-200 bg-neutral-50 px-3 py-2"
+			>
 				<Button variant="primary" onclick={saveEdit}>Done</Button>
 				<Button onclick={() => (editing = false)}>Cancel</Button>
 				<span class="text-xs text-neutral-500">⌘↵ to finish · Esc to discard</span>
@@ -101,6 +109,8 @@
 	{:else if isDiagram}
 		<Mermaid source={diagram} />
 	{:else}
+		<!-- Sanitised in render.ts: the file is written by an agent and is not trusted. -->
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		<div class="rendered">{@html html}</div>
 	{/if}
 

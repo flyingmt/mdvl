@@ -57,7 +57,9 @@ test('renders the document as blocks and draws the mermaid diagram', async ({ pa
 test('a diagram that will not parse shows its source without hiding the document', async ({
 	page
 }) => {
-	const review = openReview(`# Plan\n\n\`\`\`mermaid\nnot a diagram at all {{{\n\`\`\`\n\nAfter.\n`);
+	const review = openReview(
+		`# Plan\n\n\`\`\`mermaid\nnot a diagram at all {{{\n\`\`\`\n\nAfter.\n`
+	);
 	await page.goto(reviewUrl(review));
 
 	await expect(page.getByText('This diagram could not be drawn.')).toBeVisible();

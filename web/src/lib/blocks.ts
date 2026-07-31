@@ -94,7 +94,8 @@ export function insertAfter(document: Document, index: number, markdown: string)
 	if (parts.length === 0) return document;
 
 	if (index < 0) {
-		parts[parts.length - 1].gap = document.blocks.length > 0 ? '\n\n' : document.prelude ? '' : '\n';
+		parts[parts.length - 1].gap =
+			document.blocks.length > 0 ? '\n\n' : document.prelude ? '' : '\n';
 		return { ...document, blocks: [...parts, ...document.blocks] };
 	}
 
