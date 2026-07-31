@@ -54,6 +54,7 @@ actions that ask again first.
 | Command                      | What it does                                               |
 | ---------------------------- | ---------------------------------------------------------- |
 | `mdvl review <path>`         | Opens the file for review. Prints a review id and returns. |
+| `mdvl view <path>`           | Opens the file read-only — a snapshot; nothing is registered. |
 | `mdvl wait <id> [--timeout]` | Prints the result as JSON. Exit 0/2/3/4.                   |
 | `mdvl install`               | Installs the review skill.                                 |
 

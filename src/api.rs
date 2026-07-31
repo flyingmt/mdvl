@@ -31,7 +31,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn refused(error: anyhow::Error) -> ApiError {
+pub(crate) fn refused(error: anyhow::Error) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, format!("{error:#}"))
 }
 

@@ -44,7 +44,7 @@ function token(): string {
 	return localStorage.getItem(TOKEN_KEY) ?? '';
 }
 
-async function call(path: string, init: RequestInit = {}) {
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
 	await authenticate();
 	const response = await fetch(`/api${path}`, {
 		...init,
@@ -61,6 +61,11 @@ async function call(path: string, init: RequestInit = {}) {
 		const body = await response.json().catch(() => ({}));
 		throw new Error(body.error ?? response.statusText);
 	}
+	return response;
+}
+
+async function call(path: string, init: RequestInit = {}) {
+	const response = await request(path, init);
 	return response.status === 204 ? null : response.json();
 }
 
@@ -107,6 +112,13 @@ export type OutgoingComment = {
 
 export const fetchReview = async (id: string): Promise<LoadedReview> =>
 	LoadedReviewSchema.parse(await call(`/reviews/${id}`));
+
+/**
+ * A view's payload is the file itself, not JSON — there is nothing to parse,
+ * so nothing for Zod to check beyond the bytes arriving whole.
+ */
+export const fetchViewContent = async (path: string): Promise<string> =>
+	(await request(`/views/content?path=${encodeURIComponent(path)}`)).text();
 
 export const keepDraft = (
 	id: string,

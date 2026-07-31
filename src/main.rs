@@ -6,6 +6,7 @@ mod root;
 mod server;
 mod skill;
 mod submit;
+mod view;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,8 @@ struct Cli {
 enum Command {
     /// Open a markdown file for a human to review. Prints the review id and returns.
     Review { path: PathBuf },
+    /// Open a markdown file in the browser just to read it. Nothing is registered.
+    View { path: PathBuf },
     /// Wait for a review to finish. Prints the result as JSON.
     Wait {
         id: String,
@@ -62,6 +65,7 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode> {
     match Cli::parse().command {
         Command::Review { path } => start_review(path),
+        Command::View { path } => start_view(path),
         Command::Wait { id, timeout } => wait_for_result(&id, timeout),
         Command::Install => skill::install(&here()?),
         Command::Serve { root } => serve(&root),
@@ -114,6 +118,57 @@ fn start_review(path: PathBuf) -> Result<ExitCode> {
     }
     println!("{id}");
     Ok(ExitCode::SUCCESS)
+}
+
+/// A view is only ever opened by a human at the keyboard, and it registers
+/// nothing — so there is no id to print. All the caller gets back is the
+/// tab's URL, ticket and all, exactly as a Review's browser opens it.
+fn start_view(path: PathBuf) -> Result<ExitCode> {
+    let root = here()?;
+    let handle = daemon::connect_or_spawn(&root)?;
+    let requested = std::env::current_dir()?.join(&path);
+
+    let body = read_answer(
+        daemon::agent(Duration::from_secs(15))
+            .post(handle.url("/api/views"))
+            .header("Authorization", handle.bearer())
+            .send_json(serde_json::json!({ "path": requested }))
+            .context("the review daemon did not answer")?,
+        "the review daemon refused this file",
+    )?;
+
+    let relative = body["path"]
+        .as_str()
+        .context("the review daemon did not say what it is showing")?;
+    let ticket = body["ticket"]
+        .as_str()
+        .context("the review daemon did not return a ticket")?;
+    let viewer_page = format!(
+        "{}#k={ticket}",
+        handle.url(&format!("/v?p={}", urlencoded(relative)))
+    );
+    match std::env::var_os("MDVL_NO_BROWSER") {
+        Some(_) => eprintln!("{viewer_page}"),
+        None => {
+            let _ = open::that(viewer_page);
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// A query-string value with everything outside the unreserved set escaped —
+/// a file name can hold `&`, `#` and friends. `/` stays readable; it is legal
+/// in a query and means what it means in a path.
+fn urlencoded(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 fn wait_for_result(id: &str, timeout: u64) -> Result<ExitCode> {

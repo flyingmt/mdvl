@@ -1,7 +1,7 @@
 # md-view-linker
 
 A coding agent hands a markdown file to a human, waits, and gets back the human's judgement.
-This context is the vocabulary of that handoff.
+A human can also open a file just to read it — that is a View. This context is the vocabulary of both.
 
 ## Language
 
@@ -44,3 +44,7 @@ _Avoid_: Stale, dirty, race
 **Outcome**:
 The terminal result of a Review as the Agent receives it — the status, plus what that status carries: the Comments on Submit, the conflict copy's path on Conflict. The wire and the spec still say "result" — the same thing under its older name.
 _Avoid_: Result, verdict, report
+
+**View**:
+A human's own read of one markdown file, opened with `mdvl view`. The same Block rendering as a Review, but nothing is editable, nothing is registered, and nothing ends — no Submit, no Outcome. The tab shows the file as it was when the page loaded.
+_Avoid_: Preview, read mode, render

@@ -22,6 +22,7 @@ use crate::api;
 use crate::retire;
 use crate::review::Review;
 use crate::root::ProjectRoot;
+use crate::view;
 
 /// The reviewer's app, baked into the binary by `web/build`.
 #[cfg(not(feature = "dev-proxy"))]
@@ -124,6 +125,8 @@ fn router(app: Arc<App>) -> Router {
         .route("/reviews/{id}/submit", post(api::submit))
         .route("/reviews/{id}/cancel", post(api::cancel))
         .route("/reviews/{id}/result", get(api::result))
+        .route("/views", post(view::open))
+        .route("/views/content", get(view::content))
         .route("/events", get(api::events))
         .route("/shutdown", post(api::shutdown))
         .layer(middleware::from_fn_with_state(app.clone(), guard));

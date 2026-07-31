@@ -17,14 +17,17 @@
 
 	let {
 		block,
+		readonly = false,
 		onchange,
 		onremove,
 		oncomments
 	}: {
 		block: Block;
-		onchange: (markdown: string) => void;
-		onremove: () => void;
-		oncomments: (comments: Comment[]) => void;
+		/** A view shows the Block exactly as drawn — no control that could change it. */
+		readonly?: boolean;
+		onchange?: (markdown: string) => void;
+		onremove?: () => void;
+		oncomments?: (comments: Comment[]) => void;
 	} = $props();
 
 	let editing = $state(false);
@@ -47,18 +50,18 @@
 			remove();
 			return;
 		}
-		onchange(draft);
+		onchange?.(draft);
 	}
 
 	function addComment() {
 		const body = commentDraft.trim();
-		if (body) oncomments([...block.comments, newComment(body)]);
+		if (body) oncomments?.([...block.comments, newComment(body)]);
 		commentDraft = '';
 		commenting = false;
 	}
 
 	function dropComment(id: string) {
-		oncomments(block.comments.filter((comment) => comment.id !== id));
+		oncomments?.(block.comments.filter((comment) => comment.id !== id));
 	}
 
 	function remove() {
@@ -66,31 +69,33 @@
 			confirmingRemoval = true;
 			return;
 		}
-		onremove();
+		onremove?.();
 	}
 </script>
 
 <div class="group relative" data-testid="block">
-	<div
-		class="absolute -top-3 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
-	>
-		{#if !editing}
-			<Button variant="outline" size="icon-sm" onclick={startEditing} aria-label={t.editBlock}>
-				<Pencil aria-hidden="true" />
-			</Button>
-			<Button
-				variant="outline"
-				size="icon-sm"
-				onclick={() => (commenting = true)}
-				aria-label={t.commentOnBlock}
-			>
-				<MessageSquarePlus aria-hidden="true" />
-			</Button>
-			<Button variant="destructive" size="icon-sm" onclick={remove} aria-label={t.deleteBlock}>
-				<Trash2 aria-hidden="true" />
-			</Button>
-		{/if}
-	</div>
+	{#if !readonly}
+		<div
+			class="absolute -top-3 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
+		>
+			{#if !editing}
+				<Button variant="outline" size="icon-sm" onclick={startEditing} aria-label={t.editBlock}>
+					<Pencil aria-hidden="true" />
+				</Button>
+				<Button
+					variant="outline"
+					size="icon-sm"
+					onclick={() => (commenting = true)}
+					aria-label={t.commentOnBlock}
+				>
+					<MessageSquarePlus aria-hidden="true" />
+				</Button>
+				<Button variant="destructive" size="icon-sm" onclick={remove} aria-label={t.deleteBlock}>
+					<Trash2 aria-hidden="true" />
+				</Button>
+			{/if}
+		</div>
+	{/if}
 
 	{#if editing}
 		<div class="rounded-lg ring-2 ring-ring">
@@ -169,7 +174,7 @@
 		</Dialog.Header>
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (confirmingRemoval = false)}>{t.keepBlock}</Button>
-			<Button variant="destructive" onclick={onremove}>{t.deleteAnyway}</Button>
+			<Button variant="destructive" onclick={() => onremove?.()}>{t.deleteAnyway}</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

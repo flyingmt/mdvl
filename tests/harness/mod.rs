@@ -172,6 +172,64 @@ impl Harness {
         found
     }
 
+    /// A Project Root containing a git directory and one markdown file, with a
+    /// daemon that came up to serve a view of it. Returns the URL the browser
+    /// would have opened — no id exists, a view registers nothing.
+    pub fn with_view(name: &str, body: &str) -> (Self, String) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path().canonicalize().expect("canonical root");
+        fs::create_dir(root.join(".git")).expect("git dir");
+        fs::write(root.join(name), body).expect("write doc");
+
+        let out = run_view(&root, &root.join(name));
+        assert!(
+            out.status.success(),
+            "view failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let opened = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let info: Value = serde_json::from_str(
+            &fs::read_to_string(root.join(".mdvl/daemon.json")).expect("daemon.json"),
+        )
+        .expect("daemon.json is json");
+
+        let harness = Harness {
+            port: info["port"].as_u64().expect("port") as u16,
+            token: info["token"].as_str().expect("token").to_string(),
+            ticket: opened
+                .rsplit_once("#k=")
+                .map(|(_, ticket)| ticket.to_string())
+                .unwrap_or_default(),
+            root,
+            _dir: dir,
+        };
+        (harness, opened)
+    }
+
+    /// `mdvl view` on a path inside this root, returning the URL the browser
+    /// would have opened.
+    pub fn view(&self, path: &Path) -> String {
+        let out = run_view(&self.root, path);
+        assert!(
+            out.status.success(),
+            "view failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stderr).trim().to_string()
+    }
+
+    /// `mdvl view` on a path the daemon should refuse.
+    pub fn view_expecting_refusal(&self, path: &Path) -> String {
+        let out = run_view(&self.root, path);
+        assert!(
+            !out.status.success(),
+            "expected {} to be refused, got: {}",
+            path.display(),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        String::from_utf8_lossy(&out.stderr).to_string()
+    }
+
     pub fn review(&self, path: &Path) -> String {
         review(&self.root, path)
     }
@@ -260,6 +318,16 @@ impl Drop for ZombieDaemon {
             let _ = thread.join();
         }
     }
+}
+
+fn run_view(cwd: &Path, path: &Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_mdvl"))
+        .arg("view")
+        .arg(path)
+        .current_dir(cwd)
+        .env("MDVL_NO_BROWSER", "1")
+        .output()
+        .expect("run view")
 }
 
 fn run_review(cwd: &Path, path: &Path) -> std::process::Output {

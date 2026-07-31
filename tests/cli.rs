@@ -483,3 +483,167 @@ fn a_review_of_something_that_is_not_markdown_is_refused() {
 
     assert!(message.contains("markdown"), "unhelpful message: {message}");
 }
+
+#[test]
+fn viewing_a_file_prints_a_url_with_a_ticket_and_hides_the_daemons_token() {
+    let (h, url) = Harness::with_view("plan.md", DOC);
+
+    assert!(
+        url.contains("#k="),
+        "the browser URL must carry a single-use ticket: {url}"
+    );
+    assert!(
+        !url.contains(&h.token),
+        "the daemon's token must never appear on a command line: {url}"
+    );
+}
+
+#[test]
+fn the_view_ticket_buys_the_token_once() {
+    let (h, _url) = Harness::with_view("plan.md", DOC);
+    let exchange =
+        |ticket: &str| ureq::post(h.url("/api/exchange")).send_json(json!({ "ticket": ticket }));
+
+    let mut first = exchange(&h.ticket).expect("first exchange");
+    let bought: serde_json::Value = first.body_mut().read_json().unwrap();
+
+    assert_eq!(bought["token"], h.token);
+    assert_eq!(
+        status_of_json(exchange(&h.ticket)),
+        401,
+        "a ticket read out of the process table must be worthless once spent"
+    );
+}
+
+#[test]
+fn a_view_of_a_path_outside_the_project_root_is_refused() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.md");
+    fs::write(&secret, "# Secret\n").unwrap();
+
+    let sideways = elsewhere.path().file_name().unwrap();
+    let plain = h.view_expecting_refusal(&secret);
+    let traversal = h.view_expecting_refusal(&h.root.join("..").join(sideways).join("secret.md"));
+
+    assert!(plain.contains("outside"), "unhelpful message: {plain}");
+    assert!(
+        traversal.contains("outside"),
+        "unhelpful message: {traversal}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_pointing_out_of_the_project_root_is_refused_to_the_viewer() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.md");
+    fs::write(&secret, "# Secret\n").unwrap();
+    let bait = h.root.join("bait.md");
+    std::os::unix::fs::symlink(&secret, &bait).unwrap();
+
+    let message = h.view_expecting_refusal(&bait);
+
+    assert!(message.contains("outside"), "unhelpful message: {message}");
+}
+
+#[test]
+fn a_view_of_something_that_is_not_markdown_is_refused() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("notes.txt"), "hello").unwrap();
+
+    let message = h.view_expecting_refusal(&h.root.join("notes.txt"));
+
+    assert!(message.contains("markdown"), "unhelpful message: {message}");
+}
+
+#[test]
+fn viewing_a_file_registers_nothing_and_the_daemon_stays_up() {
+    let (h, _url) = Harness::with_view("plan.md", DOC);
+
+    let results = h.root.join(".mdvl/results");
+    let left: Vec<_> = match fs::read_dir(&results) {
+        Ok(entries) => entries.collect(),
+        Err(_) => Vec::new(),
+    };
+    assert!(
+        left.is_empty(),
+        "a view must not leave an outcome behind: {left:?}"
+    );
+    let missing = status_of(
+        ureq::get(h.url("/api/reviews/rv_nothere"))
+            .header("Authorization", format!("Bearer {}", h.token)),
+    );
+    assert_eq!(
+        missing, 404,
+        "a view registers nothing, so no id can ever fetch it as a review"
+    );
+    assert!(
+        h.daemon_survives(std::time::Duration::from_millis(500)),
+        "a view fires no drain — the daemon must only ever retire on idle"
+    );
+}
+
+#[test]
+fn a_view_during_an_open_review_changes_nothing_for_the_review() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("notes.md"), "# Notes\n").unwrap();
+
+    let _url = h.view(&h.root.join("notes.md"));
+
+    h.submit(&id, "# Plan\n\nAuth uses sessions.\n", json!([]), "");
+    h.await_daemon_exit();
+    let (result, code) = h.wait(&id, 5);
+
+    assert_eq!(result["status"], "submitted");
+    assert_eq!(
+        code, 0,
+        "the review's outcome must arrive exactly as if no view had happened"
+    );
+    assert_eq!(h.read("plan.md"), "# Plan\n\nAuth uses sessions.\n");
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn the_view_content_endpoint_hands_back_the_files_bytes_unchanged() {
+    let (h, _url) = Harness::with_view("plan.md", DOC);
+
+    let mut response = h.get("/api/views/content?path=plan.md");
+    let body = response.body_mut().read_to_string().expect("content body");
+
+    assert_eq!(
+        body, DOC,
+        "the daemon never parses markdown — the browser must get the file's exact bytes"
+    );
+}
+
+#[test]
+fn the_view_content_endpoint_refuses_paths_outside_the_root() {
+    let (h, _url) = Harness::with_view("plan.md", DOC);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.md");
+    fs::write(&secret, "# Secret\n").unwrap();
+    let sideways = elsewhere.path().file_name().unwrap();
+    let ask = |path: &str| {
+        status_of(
+            ureq::get(h.url(&format!("/api/views/content?path={path}")))
+                .header("Authorization", format!("Bearer {}", h.token)),
+        )
+    };
+
+    let absolute = ask(&secret.to_string_lossy());
+    let traversal = ask(&format!("../{}/secret.md", sideways.to_string_lossy()));
+
+    assert!(
+        (400..500).contains(&absolute),
+        "a view of an outside path must be refused, got {absolute}"
+    );
+    assert!(
+        (400..500).contains(&traversal),
+        "a view that walks out of the root must be refused, got {traversal}"
+    );
+}

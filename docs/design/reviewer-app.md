@@ -119,3 +119,44 @@ one an agent reads before building a feature; this list is the summary.
   → [language-picker.md](../../.out-of-scope/language-picker.md)
 - **No reordering by dragging.** Moving a section is what a comment is for.
   → [reordering-blocks.md](../../.out-of-scope/reordering-blocks.md)
+
+## The view page: reading without reviewing
+
+`mdvl view <path>` opens the same document at `/v?p=<path>#k=<ticket>` — one
+human, one file, nothing to decide. It is the review screen with the reviewing
+removed, and the few places it diverges are all consequences of one fact: **a
+view registers nothing with the daemon.** No review id, no outcome, no entry on
+disk — the daemon only vouches for the path (`POST /api/views`) and hands back
+the file's exact bytes (`GET /api/views/content?path=`), checked against the
+Project Root again there because the path arrives from a browser, not the CLI.
+
+What carries over unchanged: the Block components themselves, one per kind, via
+`BlockView`'s `readonly` prop — mermaid drawn, tables in their box, code fences
+byte for byte, the 46rem column, the type, the palette, the i18n. What is gone:
+the hover and focus controls, the comment draft, the document-level box, the
+modals, the footer.
+
+- **The header holds the file's path and nothing else — no Stop button.** Stop
+  kills the daemon, and a view shares its daemon with whatever review is open;
+  a reader who was only curious should not be able to end someone else's
+  review.
+- **The tab is not a viewer.** Nothing on the page subscribes to
+  `/api/events`. The daemon counts SSE subscribers to decide whether a new
+  review can be announced into an open tab instead of opening a new one — if a
+  view tab counted, a later `mdvl review` would announce into the void and its
+  document would appear nowhere (user story 35).
+- **The page is a snapshot.** The file is fetched once, at load, and never
+  re-read; seeing newer bytes means running `mdvl view` again. The daemon may
+  exit under an open view tab — when the last review on the same daemon ends —
+  and reading is unaffected because nothing further is fetched. A reload after
+  that fails; re-run the command.
+- **Only a human opens one.** No Skill exposes `mdvl view`; it exists for a
+  person at a terminal, not as a path an agent can take to show itself a file.
+
+Three ideas were argued out of this feature before it was built, each with its
+reopen condition recorded: an upgrade-to-review button
+([upgrading-a-view.md](../../.out-of-scope/upgrading-a-view.md)), viewing
+several files at once
+([viewing-many-files.md](../../.out-of-scope/viewing-many-files.md)), and
+re-using an already-open view tab for the same file
+([reusing-tabs-for-views.md](../../.out-of-scope/reusing-tabs-for-views.md)).

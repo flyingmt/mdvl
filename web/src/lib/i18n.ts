@@ -18,6 +18,7 @@ const en = {
 
 	couldNotOpen: 'This review could not be opened.',
 	couldNotLoad: 'This review could not be loaded.',
+	couldNotLoadView: 'This file could not be loaded.',
 	couldNotSubmit: 'Your review could not be sent.',
 	couldNotEnd: 'The review could not be ended.',
 
@@ -81,6 +82,7 @@ const ko: Dictionary = {
 
 	couldNotOpen: '이 리뷰를 열 수 없습니다.',
 	couldNotLoad: '이 리뷰를 불러올 수 없습니다.',
+	couldNotLoadView: '이 파일을 불러올 수 없습니다.',
 	couldNotSubmit: '리뷰를 보내지 못했습니다.',
 	couldNotEnd: '리뷰를 끝내지 못했습니다.',
 

@@ -18,7 +18,16 @@ export type Review = {
 	token: string;
 };
 
-const running: Review[] = [];
+export type View = {
+	root: string;
+	file: string;
+	/** The page mdvl would have opened, ticket and all. */
+	url: string;
+	port: number;
+	token: string;
+};
+
+const running: { port: number; token: string }[] = [];
 
 /** A throwaway Project Root holding one document, with a Review already open on it. */
 export function openReview(body: string, name = 'plan.md'): Review {
@@ -47,6 +56,56 @@ export function openReview(body: string, name = 'plan.md'): Review {
 	return review;
 }
 
+/** A throwaway Project Root holding one document, opened read-only with `mdvl view`. */
+export function openView(body: string, name = 'plan.md'): View {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mdvl-e2e-'));
+	fs.mkdirSync(path.join(root, '.git'));
+	const file = path.join(root, name);
+	fs.writeFileSync(file, body);
+
+	const started = spawnSync(BINARY, ['view', file], {
+		cwd: root,
+		encoding: 'utf8',
+		env: AS_IF_A_BROWSER
+	});
+	if (started.status !== 0) throw new Error(`mdvl view failed: ${started.stderr}`);
+
+	const daemon = JSON.parse(fs.readFileSync(path.join(root, '.mdvl/daemon.json'), 'utf8'));
+	const view = {
+		root,
+		file,
+		url: started.stderr.trim(),
+		port: daemon.port,
+		token: daemon.token
+	};
+	running.push(view);
+	return view;
+}
+
+/** A Review started alongside a view — stderr carries the tab's URL when a tab opens. */
+export function openReviewAlongside(view: View, name: string, body: string): Review {
+	const file = path.join(view.root, name);
+	fs.writeFileSync(file, body);
+
+	const started = spawnSync(BINARY, ['review', file], {
+		cwd: view.root,
+		encoding: 'utf8',
+		env: AS_IF_A_BROWSER
+	});
+	if (started.status !== 0) throw new Error(`mdvl review failed: ${started.stderr}`);
+
+	const review = {
+		root: view.root,
+		file,
+		id: started.stdout.trim(),
+		url: started.stderr.trim(),
+		port: view.port,
+		token: view.token
+	};
+	running.push(review);
+	return review;
+}
+
 /** A second Review in a root that already has a daemon. */
 export function openAnother(review: Review, name: string, body: string): string {
 	const file = path.join(review.root, name);
@@ -59,9 +118,9 @@ export function openAnother(review: Review, name: string, body: string): string 
 }
 
 /** How many tabs the daemon can see — the thing that decides tab reuse. */
-export async function viewerCount(review: Review): Promise<number> {
-	const response = await fetch(`http://127.0.0.1:${review.port}/api/health`, {
-		headers: { Authorization: `Bearer ${review.token}` }
+export async function viewerCount(daemon: { port: number; token: string }): Promise<number> {
+	const response = await fetch(`http://127.0.0.1:${daemon.port}/api/health`, {
+		headers: { Authorization: `Bearer ${daemon.token}` }
 	});
 	return (await response.json()).viewers;
 }
