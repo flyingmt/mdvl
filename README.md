@@ -2,9 +2,12 @@
 
 Hand a markdown file to a human, wait, and get back their judgement.
 
-An agent writes a plan. You want to read it properly — rendered, with the mermaid
-diagram actually drawn — fix the two sentences that are wrong yourself, and tell
-the agent what to do about the rest. `mdvl` is the thing in between.
+`mdvl` is a command-line tool with a reviewer that runs in your browser. An agent
+writes a plan, a spec, an ADR; reading it in a terminal means raw markdown —
+mermaid unparsed, tables as pipe characters — and every correction described back
+in prose. `mdvl` opens the document rendered instead: you fix the two sentences
+that are wrong yourself, and the rest becomes comments the agent receives with the
+exact lines they were anchored to.
 
 ```
 you:    /md-review docs/plan.md
@@ -24,13 +27,35 @@ mdvl install                  # puts the skill into this project's agent tooling
 `.agents/skills` or `.codex/prompts` your project already has. It marks the skill
 so the agent cannot invoke it on its own — you start reviews, not the agent.
 
+## Reviewing
+
+You start a review — the agent cannot. Say `/md-review <path>` and a tab opens
+with the document rendered: mermaid diagrams drawn, tables scrolling in their own
+box, code fences byte for byte.
+
+- **Hover or tab to a block** and its controls appear: edit, comment, delete.
+- **Edit** shows that block's markdown, not a rich-text approximation.
+  ⌘/Ctrl+Enter accepts, Escape backs out.
+- **The `+` between two blocks** inserts a new one there.
+- **A comment** is an instruction to the agent, anchored to that block — it comes
+  back with the block's line range and a quote. Ask a question instead and the
+  agent answers it.
+- **The box at the end** is for anything about the document as a whole.
+- **Submit** writes your edits to the file and hands your comments to the agent.
+  **End review** returns nothing and leaves the file untouched.
+- Nothing reaches the file until Submit, so experiment freely.
+- **Stop app** in the header shuts the daemon down, and the review with it.
+
+Deleting a block that carries comments, and ending a review, are the only two
+actions that ask again first.
+
 ## Commands
 
-| Command                    | What it does                                              |
-| -------------------------- | --------------------------------------------------------- |
-| `mdvl review <path>`       | Opens the file for review. Prints a review id and returns. |
-| `mdvl wait <id> [--timeout]` | Prints the result as JSON. Exit 0/2/3/4.                 |
-| `mdvl install`             | Installs the review skill.                                 |
+| Command                      | What it does                                               |
+| ---------------------------- | ---------------------------------------------------------- |
+| `mdvl review <path>`         | Opens the file for review. Prints a review id and returns. |
+| `mdvl wait <id> [--timeout]` | Prints the result as JSON. Exit 0/2/3/4.                   |
+| `mdvl install`               | Installs the review skill.                                 |
 
 Set `MDVL_NO_BROWSER=1` and `review` prints the reviewer's URL on stderr instead
 of opening anything — for machines with no browser to open, and for the tests.
@@ -39,6 +64,21 @@ of opening anything — for machines with no browser to open, and for the tests.
 it again), `3` if they ended the review, and `4` if the file changed underneath
 them. On `submitted` the result carries their comments, each with the line range
 of the file **as submitted** and a quote of what it was anchored to.
+
+Reading takes minutes, so `wait` is meant to be run again on `2` — the whole
+agent side of a review is:
+
+```bash
+id=$(mdvl review docs/plan.md)
+while true; do
+  mdvl wait "$id" --timeout 300
+  code=$?
+  [ "$code" -eq 2 ] || break
+done
+```
+
+On `4` nothing of the reviewer's was written: their version is at the path in
+`conflict_copy`, to be reconciled with what is now on disk.
 
 ## What it will not do
 
