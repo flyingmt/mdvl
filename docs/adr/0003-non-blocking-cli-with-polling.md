@@ -4,4 +4,4 @@
 
 ## Consequences
 
-The Skill must carry retry instructions, and the daemon must keep Review state alive between `wait` calls — which is why the daemon outlives any single command. See [0004](./0004-one-daemon-per-project-root.md).
+The Skill must carry retry instructions, and the daemon must keep Review state alive between `wait` calls — which is why the daemon outlives any single command. See [0004](./0004-one-daemon-per-project-root.md). Once a Review has ended, its Outcome is persisted to disk and the daemon may exit as soon as no Review still needs it — the same invariant, held by a different medium. See [0006](./0006-the-daemon-exits-when-the-last-review-ends.md).

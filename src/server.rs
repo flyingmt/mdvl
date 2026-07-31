@@ -19,7 +19,8 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 
 use crate::api;
-use crate::review::{Review, State as ReviewState};
+use crate::retire;
+use crate::review::Review;
 use crate::root::ProjectRoot;
 
 /// The reviewer's app, baked into the binary by `web/build`.
@@ -31,9 +32,6 @@ struct Assets;
 /// Where `npm run dev` listens, for builds carrying the `dev-proxy` feature.
 #[cfg(feature = "dev-proxy")]
 const VITE: &str = "http://127.0.0.1:5273";
-
-/// How long a daemon lingers with nothing to review before stepping aside.
-const IDLE_LIMIT: Duration = Duration::from_secs(30 * 60);
 
 /// Long enough for a browser to start, short enough that a ticket read out of
 /// the process table is worthless by the time anyone acts on it.
@@ -83,16 +81,8 @@ impl App {
         });
     }
 
-    fn idle_for(&self) -> Duration {
+    pub(crate) fn idle_for(&self) -> Duration {
         self.last_activity.lock().unwrap().elapsed()
-    }
-
-    fn has_pending(&self) -> bool {
-        self.reviews
-            .lock()
-            .unwrap()
-            .values()
-            .any(|review| review.state == ReviewState::Pending)
     }
 }
 
@@ -120,7 +110,7 @@ pub async fn serve(root: ProjectRoot) -> Result<()> {
         last_activity: Mutex::new(Instant::now()),
     });
 
-    tokio::spawn(retire_when_idle(app.clone()));
+    tokio::spawn(retire::when_idle(app.clone()));
     axum::serve(listener, router(app)).await?;
     Ok(())
 }
@@ -268,16 +258,6 @@ async fn asset(uri: Uri) -> Response {
             .into_response(),
     }
 }
-
-async fn retire_when_idle(app: Arc<App>) {
-    loop {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        if !app.has_pending() && app.idle_for() > IDLE_LIMIT {
-            std::process::exit(0);
-        }
-    }
-}
-
 fn write_daemon_file(state_dir: &Path, port: u16, token: &str) -> Result<()> {
     let body = serde_json::json!({ "port": port, "token": token, "pid": std::process::id() });
     let path = state_dir.join("daemon.json");

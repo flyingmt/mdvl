@@ -47,7 +47,11 @@ fn conflict_copy_path(absolute: &Path) -> PathBuf {
 }
 
 /// Replace via a rename so a crash mid-write cannot truncate the document.
-fn write_atomically(absolute: &Path, content: &str) -> Result<()> {
+pub fn write_atomically(absolute: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = absolute.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("{} could not be created", parent.display()))?;
+    }
     let name = absolute.file_name().unwrap_or_default().to_string_lossy();
     let temporary = absolute.with_file_name(format!(".{name}.mdvl-tmp"));
 

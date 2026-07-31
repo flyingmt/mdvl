@@ -1,11 +1,13 @@
 mod api;
 mod daemon;
+mod retire;
 mod review;
 mod root;
 mod server;
 mod skill;
 mod submit;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -116,18 +118,33 @@ fn start_review(path: PathBuf) -> Result<ExitCode> {
 
 fn wait_for_result(id: &str, timeout: u64) -> Result<ExitCode> {
     let root = here()?;
-    let handle = daemon::connect(&root)?;
-
-    let outcome = read_answer(
-        daemon::agent(Duration::from_secs(timeout + 15))
-            .get(handle.url(&format!("/api/reviews/{id}/result?timeout={timeout}")))
-            .header("Authorization", handle.bearer())
-            .call()
-            .context("the review daemon did not answer")?,
-        "no such review",
-    )?;
+    let asked = daemon::connect(&root).and_then(|handle| {
+        read_answer(
+            daemon::agent(Duration::from_secs(timeout + 15))
+                .get(handle.url(&format!("/api/reviews/{id}/result?timeout={timeout}")))
+                .header("Authorization", handle.bearer())
+                .call()
+                .context("the review daemon did not answer")?,
+            "no such review",
+        )
+    });
+    // The daemon exits once the last Review ends — and it can die between
+    // connecting and answering — so a finished Review's persisted outcome
+    // may be all that is left to read.
+    let (outcome, on_disk) = match asked {
+        Ok(outcome) => (outcome, None),
+        Err(daemon_error) => match outcome_from_disk(&root, id) {
+            Ok(found) => (found.0, Some(found.1)),
+            // Nothing answered and nothing was left behind: say what failed.
+            Err(disk_error) => return Err(daemon_error.context(format!("{disk_error:#}"))),
+        },
+    };
 
     println!("{outcome}");
+    // Printed, so the outcome is delivered; nothing may linger for a later wait.
+    if let Some(path) = on_disk {
+        let _ = fs::remove_file(path);
+    }
     Ok(match outcome["status"].as_str() {
         Some("submitted") => ExitCode::SUCCESS,
         Some("pending") => ExitCode::from(2),
@@ -135,6 +152,21 @@ fn wait_for_result(id: &str, timeout: u64) -> Result<ExitCode> {
         Some("conflict") => ExitCode::from(4),
         _ => ExitCode::FAILURE,
     })
+}
+
+/// Collect an outcome the daemon persisted before exiting. The id becomes a
+/// file name, so refuse anything that could walk out of it. The file leaves
+/// only once its outcome is delivered — deletion is the caller's job.
+fn outcome_from_disk(root: &ProjectRoot, id: &str) -> Result<(Value, PathBuf)> {
+    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        bail!("a review id is only ascii letters, digits and underscores");
+    }
+    let path = root.result_file(id);
+    let body = fs::read_to_string(&path)
+        .with_context(|| format!("no outcome of review {id} was left on disk"))?;
+    let outcome =
+        serde_json::from_str(&body).context("the stored review outcome could not be read")?;
+    Ok((outcome, path))
 }
 
 fn serve(root: &Path) -> Result<ExitCode> {

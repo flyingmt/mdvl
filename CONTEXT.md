@@ -40,3 +40,7 @@ _Avoid_: Abort, reject, discard
 **Conflict**:
 The file on disk changed after the Review began, so Submit refused to write. The human's edits are not applied and the Agent is told why.
 _Avoid_: Stale, dirty, race
+
+**Outcome**:
+The terminal result of a Review as the Agent receives it — the status, plus what that status carries: the Comments on Submit, the conflict copy's path on Conflict. The wire and the spec still say "result" — the same thing under its older name.
+_Avoid_: Result, verdict, report

@@ -18,6 +18,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::retire;
 use crate::review::{Comment, Review};
 use crate::server::{App, Event, random_hex};
 use crate::submit::{self, Written, digest};
@@ -65,6 +66,7 @@ pub async fn register(
         relative,
         content.clone(),
         digest(&content),
+        app.root.result_file(&id),
     );
     app.reviews.lock().unwrap().insert(id.clone(), review);
 
@@ -173,6 +175,7 @@ pub async fn submit(
         }
     };
     app.announce("state", &id);
+    retire::if_drained(&app);
     Ok(Json(answer))
 }
 
@@ -185,6 +188,7 @@ pub async fn cancel(
         reviews.get_mut(&id).ok_or_else(no_such_review)?.cancel();
     }
     app.announce("state", &id);
+    retire::if_drained(&app);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -202,14 +206,14 @@ pub async fn result(
 ) -> Result<Json<Value>, ApiError> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(limit.timeout.unwrap_or(300));
     let mut changes = app.events.subscribe();
-    loop {
+    let outcome = loop {
         let settled = {
             let reviews = app.reviews.lock().unwrap();
             let review = reviews.get(&id).ok_or_else(no_such_review)?;
             review.state.is_terminal().then(|| review.outcome())
         };
         if let Some(outcome) = settled {
-            return Ok(Json(outcome));
+            break outcome;
         }
 
         let give_up = tokio::select! {
@@ -218,10 +222,13 @@ pub async fn result(
         };
         if give_up {
             let reviews = app.reviews.lock().unwrap();
-            let review = reviews.get(&id).ok_or_else(no_such_review)?;
-            return Ok(Json(review.outcome()));
+            break reviews.get(&id).ok_or_else(no_such_review)?.outcome();
         }
-    }
+    };
+    // Delivered over HTTP, so nothing may linger for a later wait. A pending
+    // outcome was never persisted, so there is nothing to remove.
+    let _ = fs::remove_file(app.root.result_file(&id));
+    Ok(Json(outcome))
 }
 
 pub async fn events(State(app): State<Arc<App>>) -> impl IntoResponse {

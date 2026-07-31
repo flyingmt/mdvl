@@ -38,6 +38,11 @@ impl ProjectRoot {
         self.0.join(".mdvl")
     }
 
+    /// Where a finished Review's outcome waits for `mdvl wait` to collect it.
+    pub fn result_file(&self, id: &str) -> PathBuf {
+        self.state_dir().join("results").join(format!("{id}.json"))
+    }
+
     /// Prove a requested path is a markdown file inside this root, resolving
     /// symlinks and `..` before deciding — the check every request funnels through.
     pub fn resolve(&self, requested: &Path) -> Result<PathBuf> {

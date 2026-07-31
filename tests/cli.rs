@@ -4,8 +4,8 @@ mod harness;
 
 use std::fs;
 
-use harness::Harness;
-use serde_json::json;
+use harness::{Harness, ZombieDaemon};
+use serde_json::{Value, json};
 
 const DOC: &str = "# Plan\n\nAuth uses OAuth.\n";
 
@@ -107,6 +107,194 @@ fn ending_a_review_without_submitting_writes_nothing() {
     assert_eq!(h.read("plan.md"), DOC);
     assert_eq!(result["status"], "cancelled");
     assert_eq!(code, 3);
+}
+
+#[test]
+fn submitting_the_last_open_review_stops_the_daemon_and_wait_reads_the_outcome_from_disk() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    h.submit(
+        &id,
+        "# Plan\n\nAuth uses sessions.\n",
+        json!([]),
+        "tighten the tone",
+    );
+    h.await_daemon_exit();
+    let (result, code) = h.wait(&id, 5);
+
+    assert_eq!(result["status"], "submitted");
+    assert_eq!(
+        code, 0,
+        "the agent must learn the outcome even though the daemon is gone"
+    );
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn cancelling_the_last_open_review_stops_the_daemon_and_wait_reads_the_outcome_from_disk() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    h.cancel(&id);
+    h.await_daemon_exit();
+    let (result, code) = h.wait(&id, 5);
+
+    assert_eq!(result["status"], "cancelled");
+    assert_eq!(
+        code, 3,
+        "the agent must stop waiting even though the daemon is gone"
+    );
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn ending_one_of_two_open_reviews_leaves_the_daemon_running() {
+    let (h, first) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("api.md"), "# API\n").unwrap();
+    let _second = h.review(&h.root.join("api.md"));
+
+    h.cancel(&first);
+    // The daemon's own shutdown path sleeps 150ms before exiting, so half a
+    // second is well past a wrongful exit — and the poll catches it the
+    // moment it happens rather than at the end of the window.
+    assert!(
+        h.daemon_survives(std::time::Duration::from_millis(500)),
+        "the daemon must not exit while another review is still open"
+    );
+    let (result, code) = h.wait(&first, 5);
+    assert_eq!(result["status"], "cancelled");
+    assert_eq!(code, 3, "a live daemon still answers wait over HTTP");
+}
+
+#[test]
+fn a_review_still_pending_keeps_the_daemon_alive() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    let (result, code) = h.wait(&id, 1);
+
+    assert_eq!(result["status"], "pending");
+    assert_eq!(code, 2);
+    assert!(
+        h.daemon_alive(),
+        "the daemon must outlive every wait call while a review is pending"
+    );
+}
+
+#[test]
+fn a_manual_shutdown_still_hands_wait_the_cancelled_outcome_from_disk() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    h.post("/api/shutdown", json!(null));
+    h.await_daemon_exit();
+    let (result, code) = h.wait(&id, 5);
+
+    assert_eq!(result["status"], "cancelled");
+    assert_eq!(
+        code, 3,
+        "the agent must stop waiting even when the app was stopped by hand"
+    );
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn a_conflict_ends_the_review_stops_the_daemon_and_wait_reads_the_outcome_from_disk() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+    fs::write(
+        h.root.join("plan.md"),
+        "# Plan\n\nRewritten by the agent.\n",
+    )
+    .unwrap();
+
+    let response = h.submit(&id, "# Plan\n\nAuth uses sessions.\n", json!([]), "");
+    assert_eq!(response["status"], "conflict");
+    h.await_daemon_exit();
+    let (result, code) = h.wait(&id, 5);
+
+    assert_eq!(result["status"], "conflict");
+    assert_eq!(result["conflict_copy"], "plan.mdvl-conflict.md");
+    assert_eq!(
+        code, 4,
+        "the agent must learn of the conflict even though the daemon is gone"
+    );
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn a_daemon_lost_after_the_health_check_leaves_wait_to_collect_the_outcome_from_disk() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    h.submit(&id, "# Plan\n\nAuth uses sessions.\n", json!([]), "");
+    h.await_daemon_exit();
+    // The port answers the health check, then dies on the real request —
+    // connecting proves nothing about the daemon still being there.
+    let _zombie = ZombieDaemon::occupy(h.port, &h.root);
+    let (stdout, code) = h.wait_raw(&id, 5);
+
+    let result: Value = serde_json::from_str(stdout.trim())
+        .expect("wait must fall back to the outcome on disk when the daemon dies after connecting");
+    assert_eq!(result["status"], "submitted");
+    assert_eq!(
+        code, 0,
+        "a daemon that dies after the health check must not cost the agent the outcome"
+    );
+    assert!(
+        h.result_files(&id).is_empty(),
+        "a delivered outcome must not linger on disk"
+    );
+}
+
+#[test]
+fn an_unreadable_outcome_file_is_a_failure_that_keeps_the_file() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    h.post("/api/shutdown", json!(null));
+    h.await_daemon_exit();
+    let files = h.result_files(&id);
+    assert_eq!(files.len(), 1, "a cancelled review must leave its outcome");
+    fs::write(&files[0], "{ this is not json").unwrap();
+    let (_stdout, code) = h.wait_raw(&id, 5);
+
+    assert_ne!(
+        code, 0,
+        "an outcome that cannot be read must surface as a failure"
+    );
+    assert!(
+        files[0].exists(),
+        "an outcome that was never delivered must not be deleted"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_review_whose_outcome_cannot_be_persisted_keeps_the_daemon_alive() {
+    use std::os::unix::fs::PermissionsExt;
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    let results = h.root.join(".mdvl/results");
+    fs::create_dir_all(&results).unwrap();
+    fs::set_permissions(&results, fs::Permissions::from_mode(0o500)).unwrap();
+    h.submit(&id, "# Plan\n\nAuth uses sessions.\n", json!([]), "");
+    let survived = h.daemon_survives(std::time::Duration::from_millis(500));
+    fs::set_permissions(&results, fs::Permissions::from_mode(0o700)).unwrap();
+
+    assert!(
+        survived,
+        "the daemon must stay alive when the outcome could not be persisted — once it exits, disk is the only channel left"
+    );
+    let (result, code) = h.wait(&id, 5);
+    assert_eq!(result["status"], "submitted");
+    assert_eq!(code, 0, "a live daemon still hands the outcome over HTTP");
 }
 
 #[test]

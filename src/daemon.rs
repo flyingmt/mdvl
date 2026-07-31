@@ -26,7 +26,7 @@ impl Handle {
 }
 
 pub fn connect_or_spawn(root: &ProjectRoot) -> Result<Handle> {
-    if let Some(handle) = healthy(root) {
+    if let Ok(handle) = healthy(root) {
         return Ok(handle);
     }
 
@@ -52,24 +52,34 @@ pub fn connect_or_spawn(root: &ProjectRoot) -> Result<Handle> {
 }
 
 pub fn connect(root: &ProjectRoot) -> Result<Handle> {
-    healthy(root).context("no review daemon is running for this project")
+    healthy(root)
 }
 
 /// A daemon counts only if it answers on its recorded port and serves this root
-/// — a stale `daemon.json` from a previous run must not be trusted.
-fn healthy(root: &ProjectRoot) -> Option<Handle> {
-    let recorded = fs::read_to_string(root.state_dir().join("daemon.json")).ok()?;
-    let handle: Handle = serde_json::from_str(&recorded).ok()?;
+/// — a stale `daemon.json` from a previous run must not be trusted. Each
+/// refusal names its reason, so a caller with nothing else to try can say
+/// what actually failed.
+fn healthy(root: &ProjectRoot) -> Result<Handle> {
+    let recorded = fs::read_to_string(root.state_dir().join("daemon.json"))
+        .context("no review daemon is running for this project")?;
+    let handle: Handle =
+        serde_json::from_str(&recorded).context("the recorded review daemon could not be read")?;
     let mut response = agent(Duration::from_millis(800))
         .get(handle.url("/api/health"))
         .header("Authorization", handle.bearer())
         .call()
-        .ok()?;
+        .context("the recorded review daemon is not answering")?;
     if !response.status().is_success() {
-        return None;
+        bail!("the recorded review daemon refused its health check");
     }
-    let body: serde_json::Value = response.body_mut().read_json().ok()?;
-    (body["root"].as_str()? == root.path().to_string_lossy()).then_some(handle)
+    let body: serde_json::Value = response
+        .body_mut()
+        .read_json()
+        .context("the recorded review daemon answered gibberish")?;
+    if body["root"].as_str() != Some(root.path().to_string_lossy().as_ref()) {
+        bail!("the answering daemon serves another project root");
+    }
+    Ok(handle)
 }
 
 fn spawn(root: &ProjectRoot) -> Result<()> {
@@ -97,7 +107,7 @@ fn spawn(root: &ProjectRoot) -> Result<()> {
 fn wait_for_health(root: &ProjectRoot) -> Result<Handle> {
     let deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < deadline {
-        if let Some(handle) = healthy(root) {
+        if let Ok(handle) = healthy(root) {
             return Ok(handle);
         }
         std::thread::sleep(Duration::from_millis(50));
