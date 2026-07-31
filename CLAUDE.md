@@ -274,6 +274,18 @@ The five canonical roles, each label string equal to its name. See `docs/agents/
 Single-context — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 
+# 하네스: mdvl 구현
+
+**목표:** 코드 변경이 계약(스펙·글로서리·ADR·설계·out-of-scope)과 어긋나지 않고, 붙은 테스트가 실제로 그 변경을 검증하도록 보장한다.
+
+**트리거:** mdvl에 기능을 더하거나 동작을 바꾸거나 버그를 고칠 때 `mdvl-build` 스킬을 사용하라. 단순 질문·오타 수정은 직접 응답 가능.
+
+**변경 이력:**
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-07-31 | 초기 구성 — 4에이전트 생성-검증 팀 | 전체 | 세션 중 3종 실패(거짓 통과 테스트·문서/코드 괴리·cwd 사고) 방어 |
+
+
 # Rules
 
 - When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision. 
