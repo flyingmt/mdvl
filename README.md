@@ -76,5 +76,7 @@ answering from the same origin, so nothing about authentication differs from a
 real build.
 
 The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary —
-[docs/adr](./docs/adr), which records the four decisions a reader would otherwise
-question, and [docs/design](./docs/design) for the reviewer's screen.
+[docs/adr](./docs/adr), which records the decisions a reader would otherwise
+question, [docs/design](./docs/design) for the reviewer's screen, and
+[.out-of-scope](./.out-of-scope) for what this project decided not to build, and
+what would have to change to reopen each one.

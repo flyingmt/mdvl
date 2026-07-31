@@ -105,9 +105,17 @@ a setting.
 
 ## Deliberate omissions
 
+Each of these has a file in [`.out-of-scope/`](../../.out-of-scope) carrying the
+full argument and what would have to change to reopen it. That directory is the
+one an agent reads before building a feature; this list is the summary.
+
 - **No dark mode.** The tokens exist for it, but the page is pinned light: one
   theme is one thing to get right, and nothing asked for two.
+  → [dark-mode.md](../../.out-of-scope/dark-mode.md)
 - **No syntax highlighting in code fences.** The reviewer is judging prose; a
   highlighter is a dependency and a distraction.
+  → [syntax-highlighting.md](../../.out-of-scope/syntax-highlighting.md)
 - **No language picker.** The browser already knows.
+  → [language-picker.md](../../.out-of-scope/language-picker.md)
 - **No reordering by dragging.** Moving a section is what a comment is for.
+  → [reordering-blocks.md](../../.out-of-scope/reordering-blocks.md)
