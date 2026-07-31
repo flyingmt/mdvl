@@ -71,35 +71,44 @@ fn here() -> Result<ProjectRoot> {
     ProjectRoot::discover(&cwd)
 }
 
+/// The daemon puts the reason it refused in the body; surface that rather than
+/// a bare status code.
+fn read_answer(mut response: ureq::http::Response<ureq::Body>, fallback: &str) -> Result<Value> {
+    let refused = !response.status().is_success();
+    let body: Value = response.body_mut().read_json().unwrap_or(Value::Null);
+    if refused {
+        bail!("{}", body["error"].as_str().unwrap_or(fallback));
+    }
+    Ok(body)
+}
+
 fn start_review(path: PathBuf) -> Result<ExitCode> {
     let root = here()?;
     let handle = daemon::connect_or_spawn(&root)?;
     let requested = std::env::current_dir()?.join(&path);
 
-    let mut response = daemon::agent(Duration::from_secs(15))
-        .post(handle.url("/api/reviews"))
-        .header("Authorization", handle.bearer())
-        .send_json(serde_json::json!({ "path": requested }))
-        .context("the review daemon did not answer")?;
-    let refused = !response.status().is_success();
-    let body: Value = response.body_mut().read_json().unwrap_or(Value::Null);
-    if refused {
-        bail!(
-            "{}",
-            body["error"]
-                .as_str()
-                .unwrap_or("the review daemon refused this file")
-        );
-    }
+    let body = read_answer(
+        daemon::agent(Duration::from_secs(15))
+            .post(handle.url("/api/reviews"))
+            .header("Authorization", handle.bearer())
+            .send_json(serde_json::json!({ "path": requested }))
+            .context("the review daemon did not answer")?,
+        "the review daemon refused this file",
+    )?;
 
     let id = body["id"]
         .as_str()
         .context("the review daemon did not return a review id")?;
-    if body["should_open"].as_bool().unwrap_or(true)
-        && std::env::var_os("MDVL_NO_BROWSER").is_none()
-    {
-        let page = format!("{}#t={}", handle.url(&format!("/r/{id}")), handle.token);
-        let _ = open::that(page);
+    // A ticket comes back only when no tab is watching. It buys the token once,
+    // so the secret itself never appears in a command line.
+    if let Some(ticket) = body["ticket"].as_str() {
+        let reviewer_page = format!("{}#k={ticket}", handle.url(&format!("/r/{id}")));
+        match std::env::var_os("MDVL_NO_BROWSER") {
+            Some(_) => eprintln!("{reviewer_page}"),
+            None => {
+                let _ = open::that(reviewer_page);
+            }
+        }
     }
     println!("{id}");
     Ok(ExitCode::SUCCESS)
@@ -109,16 +118,14 @@ fn wait_for_result(id: &str, timeout: u64) -> Result<ExitCode> {
     let root = here()?;
     let handle = daemon::connect(&root)?;
 
-    let mut response = daemon::agent(Duration::from_secs(timeout + 15))
-        .get(handle.url(&format!("/api/reviews/{id}/result?timeout={timeout}")))
-        .header("Authorization", handle.bearer())
-        .call()
-        .context("the review daemon did not answer")?;
-    let refused = !response.status().is_success();
-    let outcome: Value = response.body_mut().read_json().unwrap_or(Value::Null);
-    if refused {
-        bail!("{}", outcome["error"].as_str().unwrap_or("no such review"));
-    }
+    let outcome = read_answer(
+        daemon::agent(Duration::from_secs(timeout + 15))
+            .get(handle.url(&format!("/api/reviews/{id}/result?timeout={timeout}")))
+            .header("Authorization", handle.bearer())
+            .call()
+            .context("the review daemon did not answer")?,
+        "no such review",
+    )?;
 
     println!("{outcome}");
     Ok(match outcome["status"].as_str() {

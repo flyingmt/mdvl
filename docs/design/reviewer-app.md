@@ -1,0 +1,95 @@
+# The reviewer's app
+
+What the human sees when an Agent hands them a file, and why it looks the way it
+does. Vocabulary is `CONTEXT.md`'s; the behaviour it serves is issue #1.
+
+## The one thing this screen is for
+
+Judging writing. Everything else — editing, commenting, the controls themselves —
+is secondary and gets out of the way until it is wanted.
+
+That single goal decides most of what follows: the document is rendered, not
+shown as source; it sits at a reading width rather than filling the window; and
+nothing is coloured, boxed, or bordered unless it is telling the reviewer
+something they need.
+
+## Layout
+
+```
+┌──────────────────────────────────────────────┐
+│ docs/plan.md                    [⏻ Stop app] │  sticky header
+├──────────────────────────────────────────────┤
+│                                              │
+│        # Plan                  [✎][💬][🗑]   │  controls appear on
+│        ───── + ─────                         │  hover / focus
+│        Auth uses OAuth.        [✎][💬][🗑]   │
+│        │ use sessions instead                │  comment, amber rule
+│        ───── + ─────                         │
+│        ╭──────────╮                          │
+│        │  A → B   │                          │  mermaid, drawn
+│        ╰──────────╯                          │
+│                                              │
+│        Anything about the document?          │
+│        ┌────────────────────────────┐        │
+│        └────────────────────────────┘        │
+├──────────────────────────────────────────────┤
+│ [Submit] [End review]           2 comments   │  sticky footer
+└──────────────────────────────────────────────┘
+```
+
+- **Body width 46rem.** Long-form prose past roughly 80 characters a line is
+  measurably harder to track back to the next line, and these documents are read
+  end to end.
+- **Header and footer stick.** The two actions that end a Review must be reachable
+  from anywhere in a long document without scrolling to hunt for them.
+- **Controls live on the Block, not in a toolbar.** A toolbar would need a
+  selection model; hover and focus already say which Block is meant.
+
+## Type and colour
+
+Neutral greys carry the whole interface. Colour is reserved for meaning:
+
+| Colour | Reserved for                                            |
+| ------ | ------------------------------------------------------- |
+| Amber  | Comments, and diagrams that would not draw               |
+| Red    | Destructive actions and their confirmations             |
+| Blue   | Links inside the document — the document's own, not ours |
+
+Body text is the system UI stack at 17px/1.7; only code is monospaced. Headings
+are weight 600 with tightened tracking, sized 28/22/18 — enough to structure a
+document without turning it into a poster.
+
+## Interaction rules
+
+- **Editing shows markdown.** A reviewer fixing a typo wants to see exactly what
+  they are changing, not a rich-text approximation of it (ADR-0001 puts the
+  parser in the browser; that does not make this a word processor).
+- **Every small editor behaves identically**: ⌘/Ctrl+Enter accepts, Escape backs
+  out. Implemented once, in `keys.ts`.
+- **Opening an editor moves focus into it.** The reviewer asked for it; leaving
+  focus behind would mean a second click or tab for every edit.
+- **Destructive actions confirm inline**, not in a modal. The confirmation appears
+  where the thing being destroyed is, so it is obvious what is at stake, and it
+  cannot trap focus.
+- **Nothing is written to the file until Submit.** The reviewer can experiment.
+
+## Accessibility
+
+- Every control is a real `<button>` with an `aria-label`; icons are
+  `aria-hidden` and never carry meaning alone.
+- Hover-revealed controls are also revealed by `:focus-within`, so keyboard
+  users reach everything a mouse can.
+- Colour is never the only signal: comments have a rule and a position, not just
+  a hue; failed diagrams say so in words.
+- Focus is visible everywhere via a 2px outline with offset.
+
+## Deliberate omissions
+
+- **No dark mode.** Not asked for, and one theme is one thing to get right.
+- **No syntax highlighting in code fences.** The reviewer is judging prose; a
+  highlighter is a dependency and a distraction.
+- **No component per Block kind.** One renderer handles every kind that is not a
+  diagram, because they all come out of the same sanitised HTML pipeline. Seven
+  components would have been seven ways to render the same string.
+- **No design tokens or component library.** The interface is one screen; a token
+  layer would be indirection with a single consumer.

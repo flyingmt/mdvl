@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Power } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -18,10 +19,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import InsertionPoint from '$lib/components/InsertionPoint.svelte';
 
-	if (typeof window !== 'undefined') api.captureToken();
-
 	let path = $state('');
-	let document_ = $state<Document>({ prelude: '', blocks: [] });
+	let doc = $state<Document>({ prelude: '', blocks: [] });
 	let overall = $state('');
 	let loading = $state(true);
 	let problem = $state('');
@@ -31,10 +30,25 @@
 
 	const id = $derived(page.params.id ?? '');
 	const commentCount = $derived(
-		document_.blocks.reduce((total, block) => total + block.comments.length, 0)
+		doc.blocks.reduce((total, block) => total + block.comments.length, 0)
 	);
 
-	onMount(() => api.watchForReviews((arriving) => goto(resolve('/r/[id]', { id: arriving }))));
+	onMount(() => {
+		let close = () => {};
+		api
+			.watchForReviews((arriving) => goto(resolve('/r/[id]', { id: arriving })))
+			.then((stop) => (close = stop));
+		// A tab being hidden may be a tab being closed, and the last keystroke is
+		// still sitting in the debounce.
+		const flush = () => void keep();
+		addEventListener('pagehide', flush);
+		addEventListener('visibilitychange', flush);
+		return () => {
+			close();
+			removeEventListener('pagehide', flush);
+			removeEventListener('visibilitychange', flush);
+		};
+	});
 
 	$effect(() => {
 		void load(id);
@@ -47,7 +61,7 @@
 		try {
 			const review = await api.fetchReview(current);
 			path = review.path;
-			document_ = restore(parseDocument(review.content), review.draft);
+			doc = restore(parseDocument(review.content), review.draft);
 			overall = review.draft?.overall ?? '';
 			outcome = review.state === 'pending' ? null : { status: review.state };
 		} catch (error) {
@@ -71,44 +85,50 @@
 
 	const describe = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-	let pendingSave: ReturnType<typeof setTimeout>;
-	function remember() {
-		clearTimeout(pendingSave);
-		pendingSave = setTimeout(() => {
-			api
-				.saveContent(id, serialise(document_), {
-					comments: document_.blocks.map((block) => block.comments.map((c) => c.body)),
-					overall
-				})
-				.catch(() => {});
-		}, 500);
+	let pendingKeep: ReturnType<typeof setTimeout>;
+
+	function keep() {
+		clearTimeout(pendingKeep);
+		if (!id || outcome) return Promise.resolve(null);
+		return api
+			.keepDraft(id, serialise(doc), {
+				comments: doc.blocks.map((block) => block.comments.map((comment) => comment.body)),
+				overall
+			})
+			.catch(() => null);
+	}
+
+	function touched() {
+		clearTimeout(pendingKeep);
+		pendingKeep = setTimeout(keep, 500);
 	}
 
 	function edit(index: number, markdown: string) {
-		document_ = replaceBlock(document_, index, markdown);
-		remember();
+		doc = replaceBlock(doc, index, markdown);
+		touched();
 	}
 
 	function insert(index: number, markdown: string) {
-		document_ = insertAfter(document_, index, markdown);
-		remember();
+		doc = insertAfter(doc, index, markdown);
+		touched();
 	}
 
 	function drop(index: number) {
-		document_ = removeBlock(document_, index);
-		remember();
+		doc = removeBlock(doc, index);
+		touched();
 	}
 
 	function setComments(index: number, comments: Comment[]) {
-		const blocks = [...document_.blocks];
+		const blocks = [...doc.blocks];
 		blocks[index] = { ...blocks[index], comments };
-		document_ = { ...document_, blocks };
-		remember();
+		doc = { ...doc, blocks };
+		touched();
 	}
 
 	async function submit() {
-		const ranges = lineRanges(document_);
-		const comments = document_.blocks.flatMap((block, index) =>
+		clearTimeout(pendingKeep);
+		const ranges = lineRanges(doc);
+		const comments = doc.blocks.flatMap((block, index) =>
 			block.comments.map((comment) => ({
 				lines: ranges[index],
 				quote: api.quoteOf(block.source),
@@ -117,7 +137,7 @@
 		);
 		try {
 			const result = await api.submitReview(id, {
-				content: serialise(document_),
+				content: serialise(doc),
 				comments,
 				overall: overall.trim()
 			});
@@ -128,6 +148,7 @@
 	}
 
 	async function endReview() {
+		clearTimeout(pendingKeep);
 		try {
 			await api.cancelReview(id);
 			outcome = { status: 'cancelled' };
@@ -137,6 +158,7 @@
 	}
 
 	async function stopApp() {
+		clearTimeout(pendingKeep);
 		try {
 			await api.shutdownApp();
 		} catch {
@@ -153,7 +175,10 @@
 		class="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-neutral-200 bg-white/90 px-4 py-2.5 backdrop-blur"
 	>
 		<p class="truncate font-mono text-sm text-neutral-600">{path}</p>
-		<Button onclick={stopApp} aria-label="Stop the mdvl app">⏻ Stop app</Button>
+		<Button onclick={stopApp} aria-label="Stop the mdvl app">
+			<Power size={15} aria-hidden="true" />
+			Stop app
+		</Button>
 	</header>
 
 	<main class="mx-auto w-full max-w-[46rem] px-4 py-8">
@@ -184,7 +209,7 @@
 			</div>
 		{:else}
 			<InsertionPoint oninsert={(markdown) => insert(-1, markdown)} />
-			{#each document_.blocks as block, index (block.id)}
+			{#each doc.blocks as block, index (block.id)}
 				<BlockView
 					{block}
 					onchange={(markdown) => edit(index, markdown)}
@@ -201,7 +226,7 @@
 				<textarea
 					id="overall"
 					bind:value={overall}
-					oninput={remember}
+					oninput={touched}
 					rows="3"
 					placeholder="Optional — e.g. too long, wrong audience, missing a section"
 					class="mt-2 w-full resize-y rounded-md bg-white p-3 text-sm ring-1 ring-neutral-300 outline-none focus:ring-neutral-900"

@@ -47,7 +47,7 @@
 	<!-- mermaid draws this from the fence's text under securityLevel: strict; the -->
 	<!-- markup is its own, not the file's. -->
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	<div class="overflow-x-auto text-center">{@html svg}</div>
+	<div class="overflow-x-auto text-center" data-testid="diagram">{@html svg}</div>
 {:else}
 	<div class="h-24 animate-pulse rounded-lg bg-neutral-100"></div>
 {/if}

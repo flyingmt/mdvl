@@ -18,6 +18,14 @@ fn status_of(request: ureq::RequestBuilder<ureq::typestate::WithoutBody>) -> u16
     }
 }
 
+fn status_of_json(sent: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> u16 {
+    match sent {
+        Ok(response) => response.status().as_u16(),
+        Err(ureq::Error::StatusCode(code)) => code,
+        Err(other) => panic!("unexpected transport error: {other}"),
+    }
+}
+
 #[test]
 fn wait_reports_pending_while_the_human_is_still_reviewing() {
     let (h, id) = Harness::with_doc("plan.md", DOC);
@@ -132,6 +140,24 @@ fn a_symlink_pointing_out_of_the_project_root_is_refused() {
     let message = h.review_expecting_refusal(&bait);
 
     assert!(message.contains("outside"), "unhelpful message: {message}");
+}
+
+#[test]
+fn the_ticket_that_opens_the_browser_buys_the_token_once() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    let exchange =
+        |ticket: &str| ureq::post(h.url("/api/exchange")).send_json(json!({ "ticket": ticket }));
+
+    let mut first = exchange(&h.ticket).expect("first exchange");
+    let bought: serde_json::Value = first.body_mut().read_json().unwrap();
+
+    assert_eq!(bought["token"], h.token);
+    assert_eq!(
+        status_of_json(exchange(&h.ticket)),
+        401,
+        "a ticket read out of the process table must be worthless once spent"
+    );
+    assert_eq!(status_of_json(exchange("not-a-ticket")), 401);
 }
 
 #[test]

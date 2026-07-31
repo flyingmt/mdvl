@@ -37,12 +37,17 @@ A human reading a document takes minutes, not seconds. While the status is
 done, do not decide they have abandoned it, and do not touch the file while you
 wait — you would cause a conflict with the person editing it.
 
-| Exit code | Status      | Meaning                                     |
-| --------- | ----------- | ------------------------------------------- |
-| 0         | `submitted` | They finished. Act on it.                   |
-| 2         | `pending`   | Still reading. Run `wait` again.            |
-| 3         | `cancelled` | They ended the review without submitting.   |
-| 4         | `conflict`  | The file changed underneath them.           |
+| Exit code | Status      | Meaning                                   |
+| --------- | ----------- | ----------------------------------------- |
+| 0         | `submitted` | They finished. Act on it.                 |
+| 2         | `pending`   | Still reading. Run `wait` again.          |
+| 3         | `cancelled` | They ended the review without submitting. |
+| 4         | `conflict`  | The file changed underneath them.         |
+| 1         | —           | mdvl itself failed; see stderr.           |
+
+Exit 1 usually means the human stopped the app from their browser, which takes
+the review with it. Stop waiting, say so, and ask what they want — do not start
+another review.
 
 ### 4. Act on the result
 

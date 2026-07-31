@@ -70,6 +70,28 @@ impl Review {
         }
     }
 
+    /// The human finished: their text is on disk and their Comments are released.
+    pub fn accept(&mut self, content: String, comments: Vec<Comment>, overall: String) {
+        self.file_edited = content != self.original;
+        self.working = content;
+        self.comments = comments;
+        self.overall = overall;
+        self.state = State::Submitted;
+    }
+
+    /// Someone else changed the file first, so the human's version waits elsewhere.
+    pub fn park(&mut self, content: String, copy: String) {
+        self.working = content;
+        self.conflict_copy = Some(copy);
+        self.state = State::Conflict;
+    }
+
+    pub fn cancel(&mut self) {
+        if !self.state.is_terminal() {
+            self.state = State::Cancelled;
+        }
+    }
+
     /// What `mdvl wait` prints. Comments are released only on Submit.
     pub fn outcome(&self) -> Value {
         let mut outcome = json!({

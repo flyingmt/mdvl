@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { MessageSquarePlus, Pencil, Trash2, X } from '@lucide/svelte';
 	import { newComment } from '$lib/api';
 	import type { Block, Comment } from '$lib/blocks';
+	import { editorKeys, takeFocus } from '$lib/keys';
 	import { renderMarkdown } from '$lib/render';
 	import Button from './Button.svelte';
 	import Mermaid from './Mermaid.svelte';
@@ -38,14 +40,16 @@
 		editing = true;
 	}
 
-	function saveEdit() {
+	function applyEdit() {
 		editing = false;
-		if (draft !== block.source) onchange(draft);
-	}
-
-	function keysInEditor(event: KeyboardEvent) {
-		if (event.key === 'Escape') editing = false;
-		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) saveEdit();
+		if (draft === block.source) return;
+		// Emptying the editor is a deletion, and deletions ask first when the
+		// Block carries comments.
+		if (draft.trim() === '') {
+			remove();
+			return;
+		}
+		onchange(draft);
 	}
 
 	function addComment() {
@@ -73,27 +77,28 @@
 		class="absolute -top-2 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
 	>
 		{#if !editing}
-			<Button onclick={startEditing} aria-label="Edit this block" title="Edit">✎</Button>
+			<Button onclick={startEditing} aria-label="Edit this block" title="Edit">
+				<Pencil size={15} aria-hidden="true" />
+			</Button>
 			<Button
 				onclick={() => (commenting = true)}
 				aria-label="Comment on this block"
 				title="Comment"
 			>
-				💬
+				<MessageSquarePlus size={15} aria-hidden="true" />
 			</Button>
 			<Button variant="danger" onclick={remove} aria-label="Delete this block" title="Delete">
-				✕
+				<Trash2 size={15} aria-hidden="true" />
 			</Button>
 		{/if}
 	</div>
 
 	{#if editing}
 		<div class="rounded-lg ring-2 ring-neutral-900">
-			<!-- svelte-ignore a11y_autofocus -->
 			<textarea
 				bind:value={draft}
-				onkeydown={keysInEditor}
-				autofocus
+				onkeydown={editorKeys(applyEdit, () => (editing = false))}
+				{@attach takeFocus}
 				rows={Math.max(3, draft.split('\n').length + 1)}
 				aria-label="Markdown source of this block"
 				class="w-full resize-y rounded-t-lg bg-white p-3 font-mono text-sm leading-relaxed outline-none"
@@ -101,7 +106,7 @@
 			<div
 				class="flex items-center gap-2 rounded-b-lg border-t border-neutral-200 bg-neutral-50 px-3 py-2"
 			>
-				<Button variant="primary" onclick={saveEdit}>Done</Button>
+				<Button variant="primary" onclick={applyEdit}>Done</Button>
 				<Button onclick={() => (editing = false)}>Cancel</Button>
 				<span class="text-xs text-neutral-500">⌘↵ to finish · Esc to discard</span>
 			</div>
@@ -131,23 +136,21 @@
 						type="button"
 						onclick={() => dropComment(comment.id)}
 						aria-label="Remove this comment"
-						class="rounded px-1 text-neutral-400 hover:text-red-700">✕</button
+						class="rounded px-1 text-neutral-400 hover:text-red-700"
 					>
+						<X size={14} aria-hidden="true" />
+					</button>
 				</li>
 			{/each}
 			{#if commenting}
 				<li>
-					<!-- svelte-ignore a11y_autofocus -->
 					<textarea
 						bind:value={commentDraft}
-						autofocus
+						onkeydown={editorKeys(addComment, () => (commenting = false))}
+						{@attach takeFocus}
 						rows="2"
 						placeholder="What should the agent do here?"
 						aria-label="New comment on this block"
-						onkeydown={(event) => {
-							if (event.key === 'Escape') commenting = false;
-							if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) addComment();
-						}}
 						class="w-full resize-y rounded-md bg-white p-2 text-sm ring-1 ring-neutral-300 outline-none focus:ring-neutral-900"
 					></textarea>
 					<div class="mt-1 flex gap-2">

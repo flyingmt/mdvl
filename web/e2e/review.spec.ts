@@ -3,7 +3,6 @@ import {
 	fileContents,
 	openAnother,
 	openReview,
-	reviewUrl,
 	stopEverything,
 	viewerCount,
 	waitForResult
@@ -22,6 +21,10 @@ graph TD
 \`\`\`
 
 Last paragraph.
+
+\`\`\`sh
+mdvl review plan.md
+\`\`\`
 `;
 
 test.afterEach(stopEverything);
@@ -46,12 +49,19 @@ async function commentOn(page: Page, index: number, body: string) {
 
 test('renders the document as blocks and draws the mermaid diagram', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await expect(page.getByRole('heading', { name: 'Plan' })).toBeVisible();
 	await expect(page.getByText('Auth uses OAuth.')).toBeVisible();
-	await expect(blocks(page)).toHaveCount(5);
-	await expect(blocks(page).nth(3).locator('svg')).toBeVisible();
+	await expect(blocks(page)).toHaveCount(6);
+	await expect(blocks(page).nth(3).getByTestId('diagram').locator('svg')).toBeVisible();
+});
+
+test('a code fence is shown as code rather than prose', async ({ page }) => {
+	const review = openReview(DOC);
+	await page.goto(review.url);
+
+	await expect(blocks(page).nth(5).locator('pre code')).toContainText('mdvl review plan.md');
 });
 
 test('a diagram that will not parse shows its source without hiding the document', async ({
@@ -60,7 +70,7 @@ test('a diagram that will not parse shows its source without hiding the document
 	const review = openReview(
 		`# Plan\n\n\`\`\`mermaid\nnot a diagram at all {{{\n\`\`\`\n\nAfter.\n`
 	);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await expect(page.getByText('This diagram could not be drawn.')).toBeVisible();
 	await expect(page.getByText('not a diagram at all').first()).toBeVisible();
@@ -69,7 +79,7 @@ test('a diagram that will not parse shows its source without hiding the document
 
 test('an edit to one block reaches the file on submit', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await editBlock(page, 1, 'Auth uses sessions.');
 	await page.getByRole('button', { name: 'Submit' }).click();
@@ -82,11 +92,11 @@ test('an edit to one block reaches the file on submit', async ({ page }) => {
 
 test('two paragraphs typed into one editor become two blocks', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await editBlock(page, 1, 'First half.\n\nSecond half.');
 
-	await expect(blocks(page)).toHaveCount(6);
+	await expect(blocks(page)).toHaveCount(7);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(page.getByText('Sent to the agent.')).toBeVisible();
 	expect(fileContents(review)).toContain('First half.\n\nSecond half.');
@@ -94,7 +104,7 @@ test('two paragraphs typed into one editor become two blocks', async ({ page }) 
 
 test('a block inserted between two others lands there in the file', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	// Insertion points sit before every block, so the second one follows the heading.
 	await page.getByTestId('insertion-point').nth(1).click();
@@ -108,7 +118,7 @@ test('a block inserted between two others lands there in the file', async ({ pag
 
 test('deleting a block takes its comments with it', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await commentOn(page, 1, 'explain why');
 	await expect(page.getByText('explain why')).toBeVisible();
@@ -118,16 +128,56 @@ test('deleting a block takes its comments with it', async ({ page }) => {
 	await block.getByRole('button', { name: 'Delete this block' }).click();
 	await page.getByRole('button', { name: 'Delete', exact: true }).click();
 
-	await expect(blocks(page)).toHaveCount(4);
+	await expect(blocks(page)).toHaveCount(5);
 	await expect(page.getByText('explain why')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(page.getByText('Sent to the agent.')).toBeVisible();
 	expect(waitForResult(review).comments).toEqual([]);
 });
 
+test('emptying a commented block asks before taking the comments with it', async ({ page }) => {
+	const review = openReview(DOC);
+	await page.goto(review.url);
+	await commentOn(page, 1, 'explain why');
+
+	// Clearing the editor is a deletion by another route; it must not slip past
+	// the confirmation.
+	const block = blocks(page).nth(1);
+	await block.hover();
+	await block.getByRole('button', { name: 'Edit this block' }).click();
+	await block.getByRole('textbox', { name: 'Markdown source of this block' }).fill('');
+	await block.getByRole('button', { name: 'Done' }).click();
+
+	await expect(page.getByText('Delete this block and its 1 comment(s)?')).toBeVisible();
+	await expect(page.getByText('explain why')).toBeVisible();
+	await page.getByRole('button', { name: 'Keep' }).click();
+	await expect(blocks(page)).toHaveCount(6);
+});
+
+test('work survives closing and reopening the tab', async ({ page }) => {
+	const review = openReview(DOC);
+	await page.goto(review.url);
+
+	await editBlock(page, 1, 'Auth uses sessions.');
+	await commentOn(page, 4, 'cut this');
+	await page
+		.getByRole('textbox', { name: 'Anything about the document as a whole?' })
+		.fill('too long');
+	// What a closing tab gets: no unload handler is guaranteed to finish, so the
+	// app flushes on hide.
+	await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+	await page.reload();
+
+	await expect(page.getByText('Auth uses sessions.')).toBeVisible();
+	await expect(page.getByText('cut this')).toBeVisible();
+	await expect(
+		page.getByRole('textbox', { name: 'Anything about the document as a whole?' })
+	).toHaveValue('too long');
+});
+
 test('comments carry the line ranges of the document as submitted', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await commentOn(page, 1, 'use sessions');
 	await commentOn(page, 4, 'cut this');
@@ -152,7 +202,7 @@ test('comments carry the line ranges of the document as submitted', async ({ pag
 
 test('a document-wide comment reaches the agent', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await page
 		.getByRole('textbox', { name: 'Anything about the document as a whole?' })
@@ -165,7 +215,7 @@ test('a document-wide comment reaches the agent', async ({ page }) => {
 
 test('ending the review from the browser leaves the file alone', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await editBlock(page, 1, 'Auth uses sessions.');
 	await page.getByRole('button', { name: 'End review' }).click();
@@ -178,7 +228,7 @@ test('ending the review from the browser leaves the file alone', async ({ page }
 
 test('a file changed underneath the reviewer keeps their version aside', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 	await editBlock(page, 1, 'Auth uses sessions.');
 
 	const { writeFileSync } = await import('node:fs');
@@ -195,7 +245,7 @@ test('a file changed underneath the reviewer keeps their version aside', async (
 
 test('a second review arrives in the tab that is already open', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 	// Reuse hinges on the daemon seeing this tab, so wait until it does.
 	await expect.poll(() => viewerCount(review)).toBe(1);
 
@@ -207,7 +257,7 @@ test('a second review arrives in the tab that is already open', async ({ page })
 
 test('stopping the app from the browser stops the daemon', async ({ page }) => {
 	const review = openReview(DOC);
-	await page.goto(reviewUrl(review));
+	await page.goto(review.url);
 
 	await page.getByRole('button', { name: 'Stop the mdvl app' }).click();
 	await expect(page.getByText('mdvl has stopped.')).toBeVisible();

@@ -2,16 +2,30 @@ import type { Comment } from './blocks';
 
 const TOKEN_KEY = 'mdvl-token';
 
+let arriving: Promise<void> | null = null;
+
 /**
- * The daemon hands the tab its token in the URL fragment, which never reaches
- * the server. Move it into session storage so a reload keeps working and the
- * secret stops being visible in the address bar.
+ * The daemon opens this tab with a single-use ticket in the URL fragment, which
+ * never reaches the server. Trade it for the real token once, keep that in
+ * session storage so a reload still works, and take the spent ticket out of the
+ * address bar.
  */
-export function captureToken(): void {
-	const found = /[#&]t=([a-f0-9]+)/.exec(location.hash);
+export function authenticate(): Promise<void> {
+	arriving ??= redeemTicket();
+	return arriving;
+}
+
+async function redeemTicket(): Promise<void> {
+	const found = /[#&]k=([a-f0-9]+)/.exec(location.hash);
 	if (!found) return;
-	sessionStorage.setItem(TOKEN_KEY, found[1]);
 	history.replaceState(null, '', location.pathname + location.search);
+
+	const response = await fetch('/api/exchange', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ ticket: found[1] })
+	});
+	if (response.ok) sessionStorage.setItem(TOKEN_KEY, (await response.json()).token);
 }
 
 function token(): string {
@@ -19,6 +33,7 @@ function token(): string {
 }
 
 async function call(path: string, init: RequestInit = {}) {
+	await authenticate();
 	const response = await fetch(`/api${path}`, {
 		...init,
 		headers: {
@@ -63,8 +78,8 @@ export type SubmitOutcome = {
 
 export const fetchReview = (id: string): Promise<LoadedReview> => call(`/reviews/${id}`);
 
-export const saveContent = (id: string, content: string, draft: Draft): Promise<null> =>
-	call(`/reviews/${id}/content`, { method: 'PUT', body: JSON.stringify({ content, draft }) });
+export const keepDraft = (id: string, content: string, draft: Draft): Promise<null> =>
+	call(`/reviews/${id}/draft`, { method: 'PUT', body: JSON.stringify({ content, draft }) });
 
 export const submitReview = (
 	id: string,
@@ -81,7 +96,8 @@ export const shutdownApp = (): Promise<null> => call('/shutdown', { method: 'POS
  * A live connection is also how the daemon knows this tab is open, so a second
  * Review arrives here instead of opening another window at the reviewer.
  */
-export function watchForReviews(onReview: (id: string) => void): () => void {
+export async function watchForReviews(onReview: (id: string) => void): Promise<() => void> {
+	await authenticate();
 	const source = new EventSource(`/api/events?token=${encodeURIComponent(token())}`);
 	source.onmessage = (message) => {
 		const event = JSON.parse(message.data);

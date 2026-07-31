@@ -11,6 +11,8 @@ pub struct Harness {
     pub root: PathBuf,
     pub port: u16,
     pub token: String,
+    /// The single-use ticket the browser would have carried in its URL.
+    pub ticket: String,
     _dir: tempfile::TempDir,
 }
 
@@ -23,7 +25,14 @@ impl Harness {
         fs::create_dir(root.join(".git")).expect("git dir");
         fs::write(root.join(name), body).expect("write doc");
 
-        let id = review(&root, &root.join(name));
+        let out = run_review(&root, &root.join(name));
+        assert!(
+            out.status.success(),
+            "review failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let opened = String::from_utf8_lossy(&out.stderr).trim().to_string();
         let info: Value = serde_json::from_str(
             &fs::read_to_string(root.join(".mdvl/daemon.json")).expect("daemon.json"),
         )
@@ -32,6 +41,10 @@ impl Harness {
         let harness = Harness {
             port: info["port"].as_u64().expect("port") as u16,
             token: info["token"].as_str().expect("token").to_string(),
+            ticket: opened
+                .rsplit_once("#k=")
+                .map(|(_, ticket)| ticket.to_string())
+                .unwrap_or_default(),
             root,
             _dir: dir,
         };

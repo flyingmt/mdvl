@@ -63,6 +63,10 @@ cd web && npm run lint          # prettier + eslint
 cargo clippy --all-targets
 ```
 
-The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary — and
+A debug build reads `web/build` from disk at run time rather than embedding it,
+so a frontend change needs `npm run build` and a refresh — not a Rust rebuild.
+Release builds embed it.
+
+The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary —
 [docs/adr](./docs/adr), which records the four decisions a reader would otherwise
-question.
+question, and [docs/design](./docs/design) for the reviewer's screen.

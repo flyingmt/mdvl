@@ -10,10 +10,9 @@ const SKILL: &str = include_str!("skill/SKILL.md");
 /// Where each kind of agent tooling keeps a manually-invoked skill. The
 /// container must already exist — installing a skill is not a reason to invent
 /// an agent's configuration directory.
-const HOMES: [(&str, &str); 3] = [
+const HOMES: [(&str, &str); 2] = [
     (".claude/skills", "md-review/SKILL.md"),
     (".agents/skills", "md-review/SKILL.md"),
-    (".codex/prompts", "md-review.md"),
 ];
 
 pub fn install(root: &ProjectRoot) -> Result<ExitCode> {
@@ -37,7 +36,7 @@ pub fn install(root: &ProjectRoot) -> Result<ExitCode> {
     if installed == 0 {
         eprintln!(
             "mdvl: no agent tooling found in {}.\n\
-             Create one of .claude/skills, .agents/skills or .codex/prompts and run this again.",
+             Create .claude/skills or .agents/skills and run this again.",
             root.path().display()
         );
         return Ok(ExitCode::FAILURE);

@@ -29,6 +29,10 @@ struct Assets;
 /// How long a daemon lingers with nothing to review before stepping aside.
 const IDLE_LIMIT: Duration = Duration::from_secs(30 * 60);
 
+/// Long enough for a browser to start, short enough that a ticket read out of
+/// the process table is worthless by the time anyone acts on it.
+const TICKET_LIFE: Duration = Duration::from_secs(60);
+
 #[derive(Clone, Serialize)]
 pub struct Event {
     pub kind: &'static str,
@@ -43,12 +47,27 @@ pub struct App {
     pub events: broadcast::Sender<Event>,
     /// Open browser tabs, so a second Review can reuse one instead of opening another.
     pub viewers: AtomicUsize,
+    /// Unspent stand-ins for the token, each good once.
+    tickets: Mutex<HashMap<String, Instant>>,
     last_activity: Mutex<Instant>,
 }
 
 impl App {
     pub fn touch(&self) {
         *self.last_activity.lock().unwrap() = Instant::now();
+    }
+
+    pub fn mint_ticket(&self) -> String {
+        let ticket = random_hex(16);
+        let mut tickets = self.tickets.lock().unwrap();
+        tickets.retain(|_, issued| issued.elapsed() < TICKET_LIFE);
+        tickets.insert(ticket.clone(), Instant::now());
+        ticket
+    }
+
+    pub fn redeem(&self, ticket: &str) -> Option<String> {
+        let issued = self.tickets.lock().unwrap().remove(ticket)?;
+        (issued.elapsed() < TICKET_LIFE).then(|| self.token.clone())
     }
 
     pub fn announce(&self, kind: &'static str, id: &str) {
@@ -91,6 +110,7 @@ pub async fn serve(root: ProjectRoot) -> Result<()> {
         reviews: Mutex::new(HashMap::new()),
         events,
         viewers: AtomicUsize::new(0),
+        tickets: Mutex::new(HashMap::new()),
         last_activity: Mutex::new(Instant::now()),
     });
 
@@ -100,19 +120,24 @@ pub async fn serve(root: ProjectRoot) -> Result<()> {
 }
 
 fn router(app: Arc<App>) -> Router {
-    let api = Router::new()
+    let guarded = Router::new()
         .route("/health", get(api::health))
         .route("/reviews", post(api::register))
         .route("/reviews/{id}", get(api::fetch))
-        .route("/reviews/{id}/content", put(api::save_content))
+        .route("/reviews/{id}/draft", put(api::keep_draft))
         .route("/reviews/{id}/submit", post(api::submit))
         .route("/reviews/{id}/cancel", post(api::cancel))
         .route("/reviews/{id}/result", get(api::result))
         .route("/events", get(api::events))
         .route("/shutdown", post(api::shutdown))
-        .layer(middleware::from_fn_with_state(app.clone(), guard))
-        .with_state(app);
+        .layer(middleware::from_fn_with_state(app.clone(), guard));
 
+    // The one route a tab reaches before it holds the token.
+    let unauthenticated = Router::new()
+        .route("/exchange", post(api::exchange))
+        .layer(middleware::from_fn_with_state(app.clone(), only_from_us));
+
+    let api = guarded.merge(unauthenticated).with_state(app);
     Router::new().nest("/api", api).fallback(asset)
 }
 
@@ -122,6 +147,10 @@ async fn guard(State(app): State<Arc<App>>, request: Request, next: Next) -> Res
     if !presents_token(&request, &app.token) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    only_from_us(State(app), request, next).await
+}
+
+async fn only_from_us(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     if !addressed_to_us(request.headers(), app.port) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -135,13 +164,20 @@ fn presents_token(request: &Request, expected: &str) -> bool {
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "));
-    // `EventSource` cannot carry a header, so the tab's stream presents the same
-    // secret in the query string instead.
-    let from_query = request.uri().query().and_then(|query| {
-        query
-            .split('&')
-            .find_map(|pair| pair.strip_prefix("token="))
-    });
+    // `EventSource` cannot carry a header, so the tab's stream — and only the
+    // stream — may present the same secret in the query string.
+    let from_query = request
+        .uri()
+        .path()
+        .ends_with("/events")
+        .then(|| {
+            request.uri().query().and_then(|query| {
+                query
+                    .split('&')
+                    .find_map(|pair| pair.strip_prefix("token="))
+            })
+        })
+        .flatten();
 
     let Some(offered) = from_header.or(from_query) else {
         return false;

@@ -1,14 +1,19 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const BINARY = path.resolve(import.meta.dirname, '../../target/debug/mdvl');
 
+/** Stands in for the browser mdvl would have opened. */
+const AS_IF_A_BROWSER = { ...process.env, MDVL_NO_BROWSER: '1' };
+
 export type Review = {
 	root: string;
 	file: string;
 	id: string;
+	/** The page mdvl would have opened, ticket and all. */
+	url: string;
 	port: number;
 	token: string;
 };
@@ -22,14 +27,22 @@ export function openReview(body: string, name = 'plan.md'): Review {
 	const file = path.join(root, name);
 	fs.writeFileSync(file, body);
 
-	const id = execFileSync(BINARY, ['review', file], {
+	const started = spawnSync(BINARY, ['review', file], {
 		cwd: root,
 		encoding: 'utf8',
-		env: { ...process.env, MDVL_NO_BROWSER: '1' }
-	}).trim();
+		env: AS_IF_A_BROWSER
+	});
+	if (started.status !== 0) throw new Error(`mdvl review failed: ${started.stderr}`);
 
 	const daemon = JSON.parse(fs.readFileSync(path.join(root, '.mdvl/daemon.json'), 'utf8'));
-	const review = { root, file, id, port: daemon.port, token: daemon.token };
+	const review = {
+		root,
+		file,
+		id: started.stdout.trim(),
+		url: started.stderr.trim(),
+		port: daemon.port,
+		token: daemon.token
+	};
 	running.push(review);
 	return review;
 }
@@ -41,7 +54,7 @@ export function openAnother(review: Review, name: string, body: string): string 
 	return execFileSync(BINARY, ['review', file], {
 		cwd: review.root,
 		encoding: 'utf8',
-		env: { ...process.env, MDVL_NO_BROWSER: '1' }
+		env: AS_IF_A_BROWSER
 	}).trim();
 }
 
@@ -52,9 +65,6 @@ export async function viewerCount(review: Review): Promise<number> {
 	});
 	return (await response.json()).viewers;
 }
-
-export const reviewUrl = (review: Review, id = review.id) =>
-	`http://127.0.0.1:${review.port}/r/${id}#t=${review.token}`;
 
 /** What the Agent gets back. Non-zero exits still print the result. */
 export function waitForResult(review: Review, seconds = 5) {

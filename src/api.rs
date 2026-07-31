@@ -18,7 +18,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::review::{Comment, Review, State as ReviewState};
+use crate::review::{Comment, Review};
 use crate::server::{App, Event, random_hex};
 use crate::submit::{self, Written, digest};
 
@@ -72,8 +72,32 @@ pub async fn register(
     let watching = app.viewers.load(Ordering::SeqCst) > 0;
     if watching {
         app.announce("review", &id);
+        return Ok(Json(json!({ "id": id })));
     }
-    Ok(Json(json!({ "id": id, "should_open": !watching })))
+    // A ticket is issued only when a browser still has to be opened, so its
+    // presence is what tells the caller to open one.
+    Ok(Json(json!({ "id": id, "ticket": app.mint_ticket() })))
+}
+
+#[derive(Deserialize)]
+pub struct ExchangeRequest {
+    pub ticket: String,
+}
+
+/// The tab trades the single-use ticket from its URL for the daemon's token.
+/// Opening a browser puts the ticket in a command line every local user can
+/// read, so it must be worth nothing once spent.
+pub async fn exchange(
+    State(app): State<Arc<App>>,
+    Json(body): Json<ExchangeRequest>,
+) -> Result<Json<Value>, ApiError> {
+    match app.redeem(&body.ticket) {
+        Some(token) => Ok(Json(json!({ "token": token }))),
+        None => Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "that ticket is spent or expired".to_string(),
+        )),
+    }
 }
 
 pub async fn fetch(
@@ -92,16 +116,17 @@ pub async fn fetch(
 }
 
 #[derive(Deserialize)]
-pub struct ContentRequest {
+pub struct DraftRequest {
     pub content: String,
     #[serde(default)]
     pub draft: Option<Value>,
 }
 
-pub async fn save_content(
+/// Park the reviewer's work in progress so closing the tab does not cost it.
+pub async fn keep_draft(
     State(app): State<Arc<App>>,
     UrlPath(id): UrlPath<String>,
-    Json(body): Json<ContentRequest>,
+    Json(body): Json<DraftRequest>,
 ) -> Result<StatusCode, ApiError> {
     let mut reviews = app.reviews.lock().unwrap();
     let review = reviews.get_mut(&id).ok_or_else(no_such_review)?;
@@ -135,18 +160,12 @@ pub async fn submit(
         }
         match submit::apply(&review.absolute, &review.start_sha, &body.content).map_err(refused)? {
             Written::Applied => {
-                review.file_edited = body.content != review.original;
-                review.working = body.content;
-                review.comments = body.comments;
-                review.overall = body.overall;
-                review.state = ReviewState::Submitted;
+                review.accept(body.content, body.comments, body.overall);
                 json!({ "status": "submitted" })
             }
             Written::Conflict(copy) => {
                 let copy = app.root.relative(&copy);
-                review.working = body.content;
-                review.conflict_copy = Some(copy.clone());
-                review.state = ReviewState::Conflict;
+                review.park(body.content, copy.clone());
                 json!({ "status": "conflict", "conflict_copy": copy })
             }
         }
@@ -161,10 +180,7 @@ pub async fn cancel(
 ) -> Result<StatusCode, ApiError> {
     {
         let mut reviews = app.reviews.lock().unwrap();
-        let review = reviews.get_mut(&id).ok_or_else(no_such_review)?;
-        if !review.state.is_terminal() {
-            review.state = ReviewState::Cancelled;
-        }
+        reviews.get_mut(&id).ok_or_else(no_such_review)?.cancel();
     }
     app.announce("state", &id);
     Ok(StatusCode::NO_CONTENT)
@@ -251,9 +267,7 @@ pub async fn shutdown(State(app): State<Arc<App>>) -> StatusCode {
     {
         let mut reviews = app.reviews.lock().unwrap();
         for review in reviews.values_mut() {
-            if !review.state.is_terminal() {
-                review.state = ReviewState::Cancelled;
-            }
+            review.cancel();
         }
     }
     // Let anyone waiting on a Review hear that it ended before the process goes.
