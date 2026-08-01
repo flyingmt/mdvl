@@ -2,6 +2,9 @@
 
 Hand a markdown file to a human, wait, and get back their judgement.
 
+As every day vibe coding, I needed a markdown viewer with mermaid support.
+Also after reading markdown files which ai made, needed a simple review method.
+
 `mdvl` is a command-line tool with a reviewer that runs in your browser. An agent
 writes a plan, a spec, an ADR; reading it in a terminal means raw markdown —
 mermaid unparsed, tables as pipe characters — and every correction described back
