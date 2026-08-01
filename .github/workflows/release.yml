@@ -47,15 +47,8 @@ jobs:
         run: cargo build --release --locked
 
       - name: Package binary
-        id: package
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tag = "${{ inputs.tag }}"
-          } else {
-            $tag = $env:GITHUB_REF_NAME
-          }
-          $version = $tag.TrimStart("v")
           $os = $env:RUNNER_OS.ToLowerInvariant()
           $arch = $env:RUNNER_ARCH.ToLowerInvariant()
           $name = "mdvl-$os-$arch"
@@ -69,57 +62,6 @@ jobs:
             Copy-Item target/release/mdvl package/mdvl
             tar -czf "dist/$name.tar.gz" -C package mdvl
           }
-
-          if ($env:RUNNER_OS -eq "macOS") {
-            New-Item -ItemType Directory -Path pkgroot/usr/local/bin | Out-Null
-            Copy-Item target/release/mdvl pkgroot/usr/local/bin/mdvl
-            chmod 755 pkgroot/usr/local/bin/mdvl
-            pkgbuild --root pkgroot --identifier io.github.flyingmt.mdvl --version "$version" --install-location / "dist/$name.pkg"
-          }
-
-      - name: Install WiX
-        if: runner.os == 'Windows'
-        run: dotnet tool install --global wix --version 6.0.2
-
-      - name: Package Windows installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tag = "${{ inputs.tag }}"
-          } else {
-            $tag = $env:GITHUB_REF_NAME
-          }
-          $version = $tag.TrimStart("v")
-          $name = "mdvl-$($env:RUNNER_OS.ToLowerInvariant())-$($env:RUNNER_ARCH.ToLowerInvariant())"
-          New-Item -ItemType Directory -Path installer | Out-Null
-          @"
-          <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-            <Package Name="mdvl" Manufacturer="flyingmt" Version="$version" UpgradeCode="{C81F9DCE-8E9F-4DB4-859A-93EF8F3E5B90}" Scope="perMachine">
-              <MajorUpgrade DowngradeErrorMessage="A newer version of mdvl is already installed." />
-              <MediaTemplate EmbedCab="yes" />
-              <Feature Id="Main" Title="mdvl" Level="1">
-                <ComponentGroupRef Id="ProductComponents" />
-              </Feature>
-            </Package>
-            <Fragment>
-              <StandardDirectory Id="ProgramFiles64Folder">
-                <Directory Id="INSTALLFOLDER" Name="mdvl" />
-              </StandardDirectory>
-            </Fragment>
-            <Fragment>
-              <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-                <Component Id="MdvlExe">
-                  <File Source="target/release/mdvl.exe" KeyPath="yes" />
-                  <Environment Id="AddToPath" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
-                </Component>
-              </ComponentGroup>
-            </Fragment>
-          </Wix>
-          "@ | Set-Content installer/mdvl.wxs
-          wix build installer/mdvl.wxs -arch x64 -o "dist/$name.msi"
-          Remove-Item "dist/$name.wixpdb" -ErrorAction SilentlyContinue
 
       - uses: actions/upload-artifact@v7
         with:
