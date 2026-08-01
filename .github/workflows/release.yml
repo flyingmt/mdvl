@@ -25,15 +25,46 @@ jobs:
       - name: Resolve tag
         id: version
         shell: bash
+        # Both come in through the environment rather than `${{ }}` inside the
+        # script: a dispatch input is attacker-shaped text, and interpolating it
+        # into a shell would run it.
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
           else
             tag="$GITHUB_REF_NAME"
           fi
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "::error::refusing to release from tag '$tag' — expected vMAJOR.MINOR.PATCH" >&2; exit 1 ;;
+          esac
           version="${tag#v}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+
+      # Cargo.toml is the product's version — it is what `mdvl --version`
+      # prints, and `cargo build --locked` requires it to agree with
+      # Cargo.lock, so CI must not rewrite it. Check it instead, here, before
+      # anything is built or published: a mismatch found now costs a retag,
+      # while the same mismatch found later ships binaries that misreport
+      # themselves.
+      - name: Cargo.toml must match the tag
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$crate" != "$VERSION" ]; then
+            echo "::error::Cargo.toml is $crate but the tag asks for $VERSION." >&2
+            echo "Bump Cargo.toml (and Cargo.lock, via any cargo command), then retag." >&2
+            exit 1
+          fi
+          echo "Cargo.toml $crate matches the tag."
 
   build:
     name: Build ${{ matrix.target }}
@@ -258,10 +289,28 @@ jobs:
           name: checksums
           path: installer
 
+      # The child packages take their version from the tag, so the root has to
+      # as well or the two drift: a root published from a stale committed
+      # version either collides with what npm already has, or resolves
+      # `optionalDependencies` to binaries from a different release. The
+      # committed numbers in installer/package.json are a placeholder — the tag
+      # decides.
+      - name: Stamp the version from the tag
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          cd installer
+          npm pkg set "version=$VERSION"
+          for target in darwin-arm64 darwin-x64 windows-x64 linux-x64 linux-arm64; do
+            npm pkg set "optionalDependencies.@flyingmt/mdvl-$target=$VERSION"
+          done
+          npm pkg get version optionalDependencies
+
       - name: Publish root package
         run: |
           cd installer
-          npm publish --access public --provenance
+          npm publish --access public --provenance || echo "already published (version immutable)"
 
   release:
     name: Publish GitHub release

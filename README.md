@@ -165,6 +165,23 @@ For a live frontend loop, run `npm run dev` in `web/` and build the daemon with
 answering from the same origin, so nothing about authentication differs from a
 real build.
 
+## Releasing
+
+`Cargo.toml` carries the version; everything else is derived from the tag.
+
+```bash
+# bump Cargo.toml, then let cargo refresh the lockfile
+cargo build
+git commit -am "Release 0.1.3" && git push
+git tag v0.1.3 && git push origin v0.1.3
+```
+
+The release workflow refuses to start if `Cargo.toml` and the tag disagree, so a
+forgotten bump costs a retag rather than binaries that misreport their own
+version. The npm root package's version and its five `optionalDependencies` pins
+are stamped from the tag at publish time — the numbers committed in
+`installer/package.json` are a placeholder, not the source of truth.
+
 The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary —
 [docs/adr](./docs/adr), which records the decisions a reader would otherwise
 question, [docs/design](./docs/design) for the reviewer's screen,
