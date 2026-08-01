@@ -6,7 +6,18 @@
 	import { fenceBody } from '$lib/blocks';
 	import { t } from '$lib/i18n';
 
-	let { source }: { source: string } = $props();
+	let {
+		source,
+		// eslint-disable-next-line no-useless-assignment -- the parent reads this through bind:zoomable
+		zoomable = $bindable(),
+		onzoom
+	}: {
+		source: string;
+		/** True only while a drawn diagram is on screen — never while loading or failed. */
+		zoomable?: boolean;
+		/** The drawn diagram is itself an entry into the zoom modal. */
+		onzoom?: () => void;
+	} = $props();
 
 	let svg = $state('');
 	let failure = $state('');
@@ -26,9 +37,11 @@
 				if (abandoned) return;
 				svg = drawn.svg;
 				failure = '';
+				zoomable = true;
 			} catch (error) {
 				if (abandoned) return;
 				svg = '';
+				zoomable = false;
 				failure = error instanceof Error ? error.message : String(error);
 				// A failed render can leave its scratch element behind.
 				document.getElementById(`d${name}`)?.remove();
@@ -50,9 +63,17 @@
 	</div>
 {:else if svg}
 	<!-- mermaid draws this from the fence's text under securityLevel: strict; the -->
-	<!-- markup is its own, not the file's. -->
-	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	<div class="overflow-x-auto text-center" data-testid="diagram">{@html svg}</div>
+	<!-- markup is its own, not the file's. The ⤢ button is the keyboard entry. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+	<!-- eslint-disable-next-line svelte/no-static-element-interactions, svelte/click-events-have-key-events -->
+	<div
+		class="overflow-x-auto text-center {onzoom ? 'cursor-zoom-in' : ''}"
+		data-testid="diagram"
+		onclick={() => onzoom?.()}
+	>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+		{@html svg}
+	</div>
 {:else}
 	<div class="h-24 animate-pulse rounded-lg bg-muted"></div>
 {/if}

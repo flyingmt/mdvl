@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MessageSquarePlus, Pencil, Trash2, X } from '@lucide/svelte';
+	import { Maximize2, MessageSquarePlus, Pencil, Trash2, X } from '@lucide/svelte';
 	import { newComment } from '$lib/api';
 	import type { Block, Comment } from '$lib/blocks';
 	import { t } from '$lib/i18n';
@@ -9,6 +9,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import Blockquote from './blocks/Blockquote.svelte';
 	import CodeFence from './blocks/CodeFence.svelte';
+	import DiagramZoom from './blocks/DiagramZoom.svelte';
 	import Heading from './blocks/Heading.svelte';
 	import List from './blocks/List.svelte';
 	import Mermaid from './blocks/Mermaid.svelte';
@@ -35,6 +36,9 @@
 	let commenting = $state(false);
 	let commentDraft = $state('');
 	let confirmingRemoval = $state(false);
+	let diagramZoomable = $state(false);
+	let zooming = $state(false);
+	let zoomEntry = $state<HTMLButtonElement | null>(null);
 
 	function startEditing() {
 		draft = block.source;
@@ -79,6 +83,17 @@
 			class="absolute -top-3 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
 		>
 			{#if !editing}
+				{#if block.kind === 'mermaid' && diagramZoomable}
+					<Button
+						variant="outline"
+						size="icon-sm"
+						bind:ref={zoomEntry}
+						onclick={() => (zooming = true)}
+						aria-label={t.zoomIntoDiagram}
+					>
+						<Maximize2 aria-hidden="true" />
+					</Button>
+				{/if}
 				<Button variant="outline" size="icon-sm" onclick={startEditing} aria-label={t.editBlock}>
 					<Pencil aria-hidden="true" />
 				</Button>
@@ -94,6 +109,19 @@
 					<Trash2 aria-hidden="true" />
 				</Button>
 			{/if}
+		</div>
+	{/if}
+	{#if readonly && block.kind === 'mermaid' && diagramZoomable}
+		<div class="absolute -top-3 right-0 z-10">
+			<Button
+				variant="outline"
+				size="icon-sm"
+				bind:ref={zoomEntry}
+				onclick={() => (zooming = true)}
+				aria-label={t.zoomIntoDiagram}
+			>
+				<Maximize2 aria-hidden="true" />
+			</Button>
 		</div>
 	{/if}
 
@@ -122,7 +150,11 @@
 	{:else if block.kind === 'table'}
 		<Table source={block.source} />
 	{:else if block.kind === 'mermaid'}
-		<Mermaid source={block.source} />
+		<Mermaid
+			source={block.source}
+			bind:zoomable={diagramZoomable}
+			onzoom={() => (zooming = true)}
+		/>
 	{:else if block.kind === 'code'}
 		<CodeFence source={block.source} language={block.language} />
 	{:else}
@@ -166,6 +198,10 @@
 		</ul>
 	{/if}
 </div>
+
+{#if block.kind === 'mermaid'}
+	<DiagramZoom source={block.source} bind:open={zooming} onclose={() => zoomEntry?.focus()} />
+{/if}
 
 <Dialog.Root bind:open={confirmingRemoval}>
 	<Dialog.Content>

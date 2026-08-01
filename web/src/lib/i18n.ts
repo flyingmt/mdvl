@@ -55,6 +55,13 @@ const en = {
 
 	diagramFailed: 'This diagram could not be drawn.',
 
+	zoomIntoDiagram: 'Zoom into this diagram',
+	diagramZoomTitle: 'Diagram',
+	zoomIn: 'Zoom in',
+	zoomOut: 'Zoom out',
+	fitToScreen: 'Fit to screen',
+	diagramZoomHint: 'arrows move · +/− zoom · 0 fit',
+
 	nothingTitle: 'Nothing to review',
 	nothingBody:
 		'This tab opens when an agent hands you a markdown file. Ask yours to start a review, which it does by running:'
@@ -117,6 +124,13 @@ const ko: Dictionary = {
 	insert: '삽입',
 
 	diagramFailed: '이 다이어그램을 그릴 수 없습니다.',
+
+	zoomIntoDiagram: '이 다이어그램을 크게 보기',
+	diagramZoomTitle: '다이어그램',
+	zoomIn: '확대',
+	zoomOut: '축소',
+	fitToScreen: '화면에 맞추기',
+	diagramZoomHint: '화살표 이동 · +/− 확대/축소 · 0 맞춤',
 
 	nothingTitle: '리뷰할 것이 없습니다',
 	nothingBody:

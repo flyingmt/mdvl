@@ -33,7 +33,8 @@ You start a review — the agent cannot. Say `/md-review <path>` and a tab opens
 with the document rendered: mermaid diagrams drawn, tables scrolling in their own
 box, code fences byte for byte.
 
-- **Hover or tab to a block** and its controls appear: edit, comment, delete.
+- **Hover or tab to a block** and its controls appear: edit, comment, delete —
+  a mermaid block adds a ⤢ that opens the diagram full-window to pan and zoom.
 - **Edit** shows that block's markdown, not a rich-text approximation.
   ⌘/Ctrl+Enter accepts, Escape backs out.
 - **The `+` between two blocks** inserts a new one there.

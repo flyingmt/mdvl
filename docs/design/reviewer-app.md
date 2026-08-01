@@ -26,7 +26,7 @@ something they need.
 │        │ use sessions instead                │  comment, amber rule
 │        ───── + ─────                         │
 │        ╭──────────╮                          │
-│        │  A → B   │                          │  mermaid, drawn
+│        │  A → B   │         [⤢][✎][💬][🗑]   │  mermaid, drawn
 │        ╰──────────╯                          │
 │                                              │
 │        Anything about the document?          │
@@ -68,7 +68,10 @@ owns how its kind is drawn, and its CSS is named after it, so changing how lists
 look is one file and one rule block rather than a hunt through a shared sheet.
 Three of them earn the split outright: a table scrolls inside its own box rather
 than pushing the document sideways, a code fence bypasses the markdown pipeline
-so its text survives byte for byte, and a diagram is drawn by mermaid.
+so its text survives byte for byte, and a diagram is drawn by mermaid. A mermaid
+Block also leads the control group with a ⤢ that opens the diagram full-window
+to pan and zoom — the why is in
+[zooming into diagrams](zooming-into-diagrams.md).
 
 ## Language
 
@@ -134,7 +137,10 @@ What carries over unchanged: the Block components themselves, one per kind, via
 `BlockView`'s `readonly` prop — mermaid drawn, tables in their box, code fences
 byte for byte, the 46rem column, the type, the palette, the i18n. What is gone:
 the hover and focus controls, the comment draft, the document-level box, the
-modals, the footer.
+modals, the footer. One exception to the modals: a mermaid Block still offers
+the zoom modal, its ⤢ button persistent since there is no control group to join
+— reading a diagram is not reviewing it
+([zooming into diagrams](zooming-into-diagrams.md)).
 
 - **The header holds the file's path and nothing else — no Stop button.** Stop
   kills the daemon, and a view shares its daemon with whatever review is open;
