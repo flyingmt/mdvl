@@ -57,7 +57,7 @@ interface moves together. Colour outside those tokens is reserved for meaning:
 | Red    | Destructive actions and their confirmations               |
 | Blue   | Links inside the document — the document's own, not ours  |
 
-Body text is Inter at 17px/1.7; only code is monospaced. Headings are weight 600
+Body text is Pretendard Variable at 17px/1.7; only code is monospaced. Headings are weight 600
 with tightened tracking, sized 28/22/18 — enough to structure a document without
 turning it into a poster.
 
