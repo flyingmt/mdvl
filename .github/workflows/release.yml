@@ -270,7 +270,7 @@ jobs:
       - name: Publish child package
         run: |
           cd child-pkg
-          npm publish --access public --provenance || echo "already published (version immutable)"
+          "$GITHUB_WORKSPACE/.github/scripts/npm-publish.sh"
 
   publish-root:
     name: Publish root package
@@ -313,7 +313,7 @@ jobs:
       - name: Publish root package
         run: |
           cd installer
-          npm publish --access public --provenance || echo "already published (version immutable)"
+          "$GITHUB_WORKSPACE/.github/scripts/npm-publish.sh"
 
   release:
     name: Publish GitHub release
