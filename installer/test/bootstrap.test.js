@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
+const { execFileSync } = require("child_process");
 
 const { hash, hashFile, verify } = require("../lib/checksum");
 const { create, read, write, remove } = require("../lib/receipt");
@@ -66,6 +67,38 @@ async function run() {
   assert.ok(MARKER_BEGIN.includes("mdvl"));
   assert.ok(MARKER_END.includes("mdvl"));
   console.log("  shell markers OK");
+
+  // === published package contents ===
+  // bin/mdvl.js reads <package>/checksums.json and refuses to install without
+  // it, so a tarball that omits the file installs nothing. CI writes the file
+  // into installer/ just before publishing, which makes it easy to believe it
+  // ships — only `npm pack` knows what the `files` field actually lets through.
+  console.log("Testing published package contents...");
+  const pkgRoot = path.join(__dirname, "..");
+  const checksums = path.join(pkgRoot, "checksums.json");
+  // A fresh clone has no checksums.json; it arrives from a CI artifact. Stand
+  // one in so this tests the packing rules rather than the working tree.
+  const borrowed = !fs.existsSync(checksums);
+  if (borrowed) fs.writeFileSync(checksums, "{}\n");
+  try {
+    const packed = JSON.parse(
+      execFileSync("npm", ["pack", "--dry-run", "--json"], {
+        cwd: pkgRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }),
+    )[0].files.map((f) => f.path);
+
+    for (const required of ["checksums.json", "bin/mdvl.js", "lib/checksum.js"]) {
+      assert.ok(
+        packed.includes(required),
+        `${required} is missing from the published tarball — packed: ${packed.join(", ")}`,
+      );
+    }
+  } finally {
+    if (borrowed) fs.rmSync(checksums, { force: true });
+  }
+  console.log("  published package contents OK");
 
   // cleanup
   fs.rmSync(tmp, { recursive: true, force: true });

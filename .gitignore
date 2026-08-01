@@ -6,3 +6,5 @@
 /_workspace_prev
 /installer/node_modules
 /installer/checksums.json
+/dist
+/installer/checksums.json

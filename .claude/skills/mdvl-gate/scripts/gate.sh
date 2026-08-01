@@ -61,6 +61,14 @@ if [ "$SCOPE" != "web" ]; then
 	step "rust · seam A"      in_root cargo test
 fi
 
+# Seam C — the installer never reaches a browser or the Rust binary, so neither
+# of the other halves can see it. Its packaging rules decide whether anything
+# gets installed at all: a `files` field once left checksums.json out of the
+# published tarball and every `npx` install failed on it.
+if [ -f "$ROOT/installer/test/bootstrap.test.js" ]; then
+	step "installer · seam C" in_root node installer/test/bootstrap.test.js
+fi
+
 if [ "$SCOPE" != "rust" ] && [ "$SCOPE" != "quick" ]; then
 	step "web · seam B"       in_web npx playwright test
 fi
