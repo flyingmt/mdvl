@@ -5,12 +5,14 @@ Hand a markdown file to a human, wait, and get back their judgement.
 As every day vibe coding, I needed a markdown viewer with mermaid support.
 Also after reading markdown files which ai made, needed a simple review method.
 
-`mdvl` is a command-line tool with a reviewer that runs in your browser. An agent
+`mdvl` is a command-line tool with a browser reader for markdown. An agent
 writes a plan, a spec, an ADR; reading it in a terminal means raw markdown —
 mermaid unparsed, tables as pipe characters — and every correction described back
-in prose. `mdvl` opens the document rendered instead: you fix the two sentences
-that are wrong yourself, and the rest becomes comments the agent receives with the
-exact lines they were anchored to.
+in prose.
+
+Use `mdvl view` when you only need a rendered snapshot. Use `mdvl review` when
+the human should edit blocks, leave anchored comments, and hand an outcome back
+to the agent.
 
 ```
 you:    /md-review docs/plan.md
@@ -30,11 +32,21 @@ mdvl install                  # puts the skill into this project's agent tooling
 `.agents/skills` or `.codex/prompts` your project already has. It marks the skill
 so the agent cannot invoke it on its own — you start reviews, not the agent.
 
+## Viewing
+
+`mdvl view <path>` opens the file rendered in the browser and stops there. No
+Review is registered, no agent waits, and nothing in the tab can write to disk.
+It is a static snapshot: if the file changes, run `mdvl view` again.
+
+![A rendered markdown document opened with mdvl view](docs/screenshots/viewing.png)
+
 ## Reviewing
 
 You start a review — the agent cannot. Say `/md-review <path>` and a tab opens
 with the document rendered: mermaid diagrams drawn, tables scrolling in their own
 box, code fences byte for byte.
+
+![A markdown review with block controls, an anchored comment, and Submit controls](docs/screenshots/reviewing.png)
 
 - **Hover or tab to a block** and its controls appear: edit, comment, delete —
   a mermaid block adds a ⤢ that opens the diagram full-window to pan and zoom.
