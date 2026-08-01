@@ -23,25 +23,29 @@ agent:  mdvl wait rv_8f3a          →  your comments, with line numbers
 
 ## Install
 
-Install the binary via npx (Node 22+ required):
+Install the binary via npx (Node 22+, npm 10+ required):
 
 ```bash
 npx --yes @flyingmt/mdvl@latest
 mdvl install                  # puts the skill into this project's agent tooling
 ```
 
-To update or pin a specific version:
+Update or pin a specific version:
 
 ```bash
 npx --yes @flyingmt/mdvl@latest            # update to newest
-npx --yes @flyingmt/mdvl@0.2.0             # install exact version
+npx --yes @flyingmt/mdvl@0.1.1             # install exact version
 npx --yes @flyingmt/mdvl@latest uninstall  # remove
 ```
 
-Or build from source:
+**Supported platforms**: macOS 11+ (arm64, x64), Windows 10+ (x64), Linux glibc
+2.17+ (x64, arm64). The installed binary has no runtime dependencies — Node is
+only needed for the npx bootstrap.
+
+Or build from source (needs `web/build` — see Development):
 
 ```bash
-cargo install --path .        # needs `web/build` — see Development
+cargo install --path .
 ```
 
 `mdvl install` writes a `md-review` skill into whichever of `.claude/skills`,
@@ -88,7 +92,15 @@ actions that ask again first.
 | `mdvl review <path>`         | Opens the file for review. Prints a review id and returns. |
 | `mdvl view <path>`           | Opens the file read-only — a snapshot; nothing is registered. |
 | `mdvl wait <id> [--timeout]` | Prints the result as JSON. Exit 0/2/3/4.                   |
-| `mdvl install`               | Installs the review skill.                                 |
+| `mdvl install`               | Installs the review skill into agent tooling.              |
+
+Installer lifecycle (via npx):
+
+| Command                                   | What it does                                  |
+| ----------------------------------------- | --------------------------------------------- |
+| `npx --yes @flyingmt/mdvl@latest`         | Install or update to the newest release.      |
+| `npx --yes @flyingmt/mdvl@<version>`      | Install an exact version (downgrade).         |
+| `npx --yes @flyingmt/mdvl@latest uninstall` | Remove the binary, receipt, and PATH config. |
 
 Set `MDVL_NO_BROWSER=1` and `review` prints the reviewer's URL on stderr instead
 of opening anything — for machines with no browser to open, and for the tests.
@@ -121,6 +133,10 @@ file once, on Submit, and only if the file's digest still matches what it was
 when the review began — otherwise your version is parked in
 `<name>.mdvl-conflict.md` and nothing is overwritten.
 
+The installer refuses to overwrite an `mdvl` binary it did not install, verifies
+SHA-256 checksums before any filesystem change, and never requires administrator
+rights.
+
 ## Development
 
 The Rust binary embeds the built SvelteKit app, so the web build comes first:
@@ -137,6 +153,7 @@ cargo test                      # the agent's contract, through the real binary
 cd web && npx playwright test   # the reviewer's contract, through a real browser
 cd web && npm run lint          # prettier + eslint
 cargo clippy --all-targets
+node installer/test/bootstrap.test.js  # installer unit tests (Seam C)
 ```
 
 A debug build reads `web/build` from disk at run time rather than embedding it,
@@ -150,6 +167,7 @@ real build.
 
 The design lives in [CONTEXT.md](./CONTEXT.md) — the vocabulary —
 [docs/adr](./docs/adr), which records the decisions a reader would otherwise
-question, [docs/design](./docs/design) for the reviewer's screen, and
+question, [docs/design](./docs/design) for the reviewer's screen,
 [.out-of-scope](./.out-of-scope) for what this project decided not to build, and
-what would have to change to reopen each one.
+[docs/research](./docs/research) for the installer and platform research that
+informed the npx Binary Installer.
