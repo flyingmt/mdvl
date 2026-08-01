@@ -28,6 +28,9 @@ cargo install --path .        # needs `web/build` — see Development
 mdvl install                  # puts the skill into this project's agent tooling
 ```
 
+GitHub releases also include a macOS `.pkg`, a Windows `.msi`, and raw binary
+archives for each built platform.
+
 `mdvl install` writes a `md-review` skill into whichever of `.claude/skills`,
 `.agents/skills` or `.codex/prompts` your project already has. It marks the skill
 so the agent cannot invoke it on its own — you start reviews, not the agent.
