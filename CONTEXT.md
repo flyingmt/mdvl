@@ -13,6 +13,14 @@ _Avoid_: Client, caller, bot
 The manually-invoked entry point installed into the Agent's tooling. A human running it is the only way a Review begins — the Agent never starts one on its own.
 _Avoid_: Command, integration, hook
 
+**Binary Installer**:
+The distribution entry point that puts the mdvl executable on a human's terminal command search path, available from every Project Root.
+_Avoid_: Skill Installer, global installer
+
+**Skill Installer**:
+The project-scoped action that puts the Skill into the Agent tooling already used by one Project Root. It does not install the mdvl executable.
+_Avoid_: Binary Installer
+
 **Review**:
 One human pass over one markdown file, identified by a review id. Ends at Submit or Cancel; it does not span rounds.
 _Avoid_: Session, task, request

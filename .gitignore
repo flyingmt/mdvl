@@ -4,3 +4,5 @@
 /graphify-out
 /_workspace
 /_workspace_prev
+/installer/node_modules
+/installer/checksums.json

@@ -23,12 +23,26 @@ agent:  mdvl wait rv_8f3a          →  your comments, with line numbers
 
 ## Install
 
+Install the binary via npx (Node 22+ required):
+
 ```bash
-cargo install --path .        # needs `web/build` — see Development
+npx --yes @flyingmt/mdvl@latest
 mdvl install                  # puts the skill into this project's agent tooling
 ```
 
-GitHub releases include raw binary archives for each built platform.
+To update or pin a specific version:
+
+```bash
+npx --yes @flyingmt/mdvl@latest            # update to newest
+npx --yes @flyingmt/mdvl@0.2.0             # install exact version
+npx --yes @flyingmt/mdvl@latest uninstall  # remove
+```
+
+Or build from source:
+
+```bash
+cargo install --path .        # needs `web/build` — see Development
+```
 
 `mdvl install` writes a `md-review` skill into whichever of `.claude/skills`,
 `.agents/skills` or `.codex/prompts` your project already has. It marks the skill

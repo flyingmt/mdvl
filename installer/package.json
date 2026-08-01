@@ -1,0 +1,28 @@
+{
+  "name": "@flyingmt/mdvl",
+  "version": "0.1.1",
+  "description": "Binary Installer for mdvl — hand a markdown file to a human, wait, and get back their judgement.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flyingmt/mdvl"
+  },
+  "bin": {
+    "mdvl": "bin/mdvl.js"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
+  "files": [
+    "bin/",
+    "lib/"
+  ],
+  "optionalDependencies": {
+    "@flyingmt/mdvl-darwin-arm64": "0.1.1",
+    "@flyingmt/mdvl-darwin-x64": "0.1.1",
+    "@flyingmt/mdvl-windows-x64": "0.1.1",
+    "@flyingmt/mdvl-linux-x64": "0.1.1",
+    "@flyingmt/mdvl-linux-arm64": "0.1.1"
+  }
+}

@@ -15,13 +15,50 @@ permissions:
   contents: write
 
 jobs:
+  resolve:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Build ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.target }}
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-26-arm64
+            archive: mdvl-darwin-arm64.tar.gz
+          - target: x86_64-apple-darwin
+            runner: macos-26-intel
+            archive: mdvl-darwin-x64.tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            archive: mdvl-windows-x64.zip
+            crt_static: '1'
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            archive: mdvl-linux-x64.tar.gz
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            archive: mdvl-linux-arm64.tar.gz
 
     steps:
       - uses: actions/checkout@v6
@@ -42,65 +79,211 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup target add ${{ matrix.target }}
 
-      - name: Build binary
-        run: cargo build --release --locked
+      - name: Build binary (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Build binary (Windows, static CRT)
+        if: runner.os == 'Windows'
+        env:
+          RUSTFLAGS: '-C target-feature=+crt-static'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build binary (Linux)
+        if: runner.os == 'Linux'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          tar -czf "dist/${{ matrix.archive }}" -C target/${{ matrix.target }}/release mdvl
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $os = $env:RUNNER_OS.ToLowerInvariant()
-          $arch = $env:RUNNER_ARCH.ToLowerInvariant()
-          $name = "mdvl-$os-$arch"
-          New-Item -ItemType Directory -Path dist | Out-Null
-          New-Item -ItemType Directory -Path package | Out-Null
-
-          if ($env:RUNNER_OS -eq "Windows") {
-            Copy-Item target/release/mdvl.exe package/mdvl.exe
-            Compress-Archive -Path package/mdvl.exe -DestinationPath "dist/$name.zip"
-          } else {
-            Copy-Item target/release/mdvl package/mdvl
-            tar -czf "dist/$name.tar.gz" -C package mdvl
-          }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path "target/${{ matrix.target }}/release/mdvl.exe" -DestinationPath "dist/${{ matrix.archive }}"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.os }}
-          path: dist/*
+          name: ${{ matrix.archive }}
+          path: dist/${{ matrix.archive }}
           if-no-files-found: error
 
-  publish:
-    name: Publish GitHub release
+  collect:
+    name: Compute checksums
     needs: build
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Extract binaries and compute SHA-256
+        run: |
+          mkdir -p binaries dist
+          for dir in artifacts/*/; do
+            archive=$(basename "$dir")
+            file=$(ls "$dir" | head -1)
+            cp "${dir}${file}" "dist/$file"
+            target=$(echo "$file" | sed 's/^mdvl-//; s/\.tar\.gz$//; s/\.zip$//')
+            mkdir -p "binaries/$target"
+            if [[ "$file" == *.zip ]]; then
+              unzip -o "${dir}${file}" -d "binaries/$target"
+            else
+              tar -xzf "${dir}${file}" -C "binaries/$target"
+            fi
+          done
+
+          node -e "
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const path = require('path');
+          const map = {};
+          for (const target of fs.readdirSync('binaries')) {
+            const dir = path.join('binaries', target);
+            const binName = fs.existsSync(path.join(dir, 'mdvl.exe')) ? 'mdvl.exe' : 'mdvl';
+            const binPath = path.join(dir, binName);
+            const hash = crypto.createHash('sha256').update(fs.readFileSync(binPath)).digest('hex');
+            map[target] = hash;
+          }
+          fs.writeFileSync('checksums.json', JSON.stringify(map, null, 2));
+          console.log(JSON.stringify(map, null, 2));
+          "
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: checksums
+          path: checksums.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archives
+          path: dist/*
+
+  publish-children:
+    name: Publish ${{ matrix.name }}
+    needs: [resolve, collect]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: darwin-arm64
+            os: darwin
+            cpu: arm64
+          - name: darwin-x64
+            os: darwin
+            cpu: x64
+          - name: windows-x64
+            os: win32
+            cpu: x64
+          - name: linux-x64
+            os: linux
+            cpu: x64
+            libc: glibc
+          - name: linux-arm64
+            os: linux
+            cpu: arm64
+            libc: glibc
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Resolve tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag="$GITHUB_REF_NAME"
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: release-*
+          name: archives
           path: dist
-          merge-multiple: true
 
-      - name: Create or update release
+      - name: Prepare child package
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.name }}
+          OS: ${{ matrix.os }}
+          CPU: ${{ matrix.cpu }}
+          LIBC: ${{ matrix.libc }}
+        run: |
+          mkdir -p child-pkg
+          if [[ "$OS" == "win32" ]]; then
+            unzip -o "dist/mdvl-${TARGET}.zip" -d child-pkg
+          else
+            tar -xzf "dist/mdvl-${TARGET}.tar.gz" -C child-pkg
+          fi
+
+          if [ -n "$LIBC" ]; then
+            LIBC_LINE="\"libc\": [\"$LIBC\"],"
+          else
+            LIBC_LINE=""
+          fi
+
+          printf '{\n  "name": "@flyingmt/mdvl-%s",\n  "version": "%s",\n  "description": "mdvl native binary for %s",\n  "license": "MIT",\n  "os": ["%s"],\n  "cpu": ["%s"],\n  %s"files": ["mdvl", "mdvl.exe"]\n}\n' \
+            "$TARGET" "$VERSION" "$TARGET" "$OS" "$CPU" "$LIBC_LINE" > child-pkg/package.json
+
+      - name: Publish child package
+        run: |
+          cd child-pkg
+          npm publish --access public --provenance || echo "already published (version immutable)"
+
+  publish-root:
+    name: Publish root package
+    needs: [resolve, collect, publish-children]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: checksums
+          path: installer
+
+      - name: Publish root package
+        run: |
+          cd installer
+          npm publish --access public --provenance
+
+  release:
+    name: Publish GitHub release
+    needs: [resolve, collect, publish-root]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: archives
+          path: dist
+
+      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+            echo "Release $TAG already exists (immutable). Skipping."
           else
             gh release create "$TAG" dist/* --generate-notes --latest --target "$GITHUB_SHA"
           fi
