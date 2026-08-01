@@ -119,6 +119,7 @@ jobs:
           </Wix>
           "@ | Set-Content installer/mdvl.wxs
           wix build installer/mdvl.wxs -arch x64 -o "dist/$name.msi"
+          Remove-Item "dist/$name.wixpdb" -ErrorAction SilentlyContinue
 
       - uses: actions/upload-artifact@v7
         with:
