@@ -66,6 +66,11 @@ jobs:
           fi
           echo "Cargo.toml $crate matches the tag."
 
+      # Seam C — the bootstrap's own unit tests. They live here, in the first
+      # job, because a failure means nothing downstream is worth building.
+      - name: Seam C — bootstrap unit tests
+        run: node installer/test/bootstrap.test.js
+
   build:
     name: Build ${{ matrix.target }}
     needs: resolve
@@ -264,7 +269,12 @@ jobs:
             LIBC_LINE=""
           fi
 
-          printf '{\n  "name": "@flyingmt/mdvl-%s",\n  "version": "%s",\n  "description": "mdvl native binary for %s",\n  "license": "MIT",\n  "os": ["%s"],\n  "cpu": ["%s"],\n  %s"files": ["mdvl", "mdvl.exe"]\n}\n' \
+          # `repository` is not decoration here: `npm publish --provenance`
+          # derives the source repository from it, and refuses to build a
+          # provenance statement without one. A child package generated without
+          # it fails at publish time, after five binaries have already been
+          # built.
+          printf '{\n  "name": "@flyingmt/mdvl-%s",\n  "version": "%s",\n  "description": "mdvl native binary for %s",\n  "license": "MIT",\n  "repository": {"type": "git", "url": "git+https://github.com/flyingmt/mdvl.git"},\n  "os": ["%s"],\n  "cpu": ["%s"],\n  %s"files": ["mdvl", "mdvl.exe"]\n}\n' \
             "$TARGET" "$VERSION" "$TARGET" "$OS" "$CPU" "$LIBC_LINE" > child-pkg/package.json
 
       - name: Publish child package
@@ -310,10 +320,90 @@ jobs:
           done
           npm pkg get version optionalDependencies
 
+      # 0.1.1 shipped with `checksums.json` declared in `files` and absent from
+      # the tarball, and npm said nothing. Every install of it died at
+      # `checksums.json not found in the installer package.` — on every
+      # platform, macOS included. Pack the thing and look inside before the
+      # version becomes immutable.
+      - name: The tarball must carry a complete checksums.json
+        shell: bash
+        run: |
+          cd installer
+          tarball=$(npm pack --silent)
+          if ! tar -tzf "$tarball" | grep -qx 'package/checksums.json'; then
+            echo "::error::checksums.json is not in the packed tarball — this root package would fail on every platform." >&2
+            exit 1
+          fi
+          tar -xzOf "$tarball" package/checksums.json > packed-checksums.json
+          node -e "
+          const map = require('./packed-checksums.json');
+          const want = ['darwin-arm64', 'darwin-x64', 'windows-x64', 'linux-x64', 'linux-arm64'];
+          const bad = want.filter((t) => !/^[0-9a-f]{64}\$/.test(map[t] || ''));
+          if (bad.length) {
+            console.error('::error::checksums.json has no usable SHA-256 for: ' + bad.join(', '));
+            process.exit(1);
+          }
+          console.log('checksums.json carries all five targets.');
+          "
+          rm -f "$tarball" packed-checksums.json
+
       - name: Publish root package
         run: |
           cd installer
           "$GITHUB_WORKSPACE/.github/scripts/npm-publish.sh"
+
+  # Seam D runs after publication, not before it. Before publication the only
+  # thing installable is a local tarball wired up with `file:` paths, and that
+  # path bypasses exactly what has been broken here — npm's `os`/`cpu`/`libc`
+  # resolution of the child packages. Verifying the real registry answer is
+  # worth more than verifying it earlier. A bad version is handled the way
+  # issue #17 already decided: `npm deprecate`, then a patch.
+  verify:
+    name: Verify on ${{ matrix.runner }}
+    needs: [resolve, publish-root]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # A version is published before it is fetchable — the registry serves
+      # reads from a CDN that lags the write by seconds. Wait for it, or the
+      # first verifier fails on a 404 that means nothing.
+      - name: Wait for the registry to serve the version
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          for _ in $(seq 1 30); do
+            if npm view "@flyingmt/mdvl@$VERSION" version >/dev/null 2>&1; then
+              echo "@flyingmt/mdvl@$VERSION resolves."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::@flyingmt/mdvl@$VERSION never resolved on the registry." >&2
+          exit 1
+
+      - name: Seam D — installer integration (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MDVL_VERSION: ${{ needs.resolve.outputs.version }}
+        run: bash installer/test/integration.sh
+
+      - name: Seam D — installer integration (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MDVL_VERSION: ${{ needs.resolve.outputs.version }}
+        run: ./installer/test/integration.ps1
 
   release:
     name: Publish GitHub release

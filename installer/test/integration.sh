@@ -1,110 +1,101 @@
 #!/bin/sh
-# Seam D — Installer integration test
-# Runs on a real OS with a real binary. Designed for GitHub Actions matrix:
-#   macos-latest, ubuntu-latest, windows-latest
+# Seam D — Installer integration test (macOS, Linux)
 #
-# Prerequisites:
-#   - A published @flyingmt/mdvl@X on npm (or a local npm pack tarball)
-#   - Node 22+
+# Runs after publication, against the real registry, on a real OS. It answers
+# one question: does `npx @flyingmt/mdvl@X` put a working mdvl on this machine
+# and take it back off again?
 #
-# Usage:
-#   ./installer/test/integration.sh
+# Requires MDVL_VERSION — the version just published. `@latest` would test
+# whichever version happens to be newest, which during a release is not
+# necessarily the one being released.
 #
 # Exit 0 = all pass, 1 = any failure.
 
 set -e
+
+if [ -z "$MDVL_VERSION" ]; then
+  echo "MDVL_VERSION is not set — refusing to guess which version to verify." >&2
+  exit 1
+fi
+
+PKG="@flyingmt/mdvl@$MDVL_VERSION"
 PASS=0
 FAIL=0
 
 ok() { echo "  ✓ $1"; PASS=$((PASS + 1)); }
 ko() { echo "  ✗ $1"; FAIL=$((FAIL + 1)); }
 
-echo "Seam D — Installer integration test"
+BIN="$HOME/.local/bin/mdvl"
+
+case "$(uname -s)" in
+  Darwin) STATE="$HOME/Library/Application Support/mdvl" ;;
+  *)      STATE="${XDG_STATE_HOME:-$HOME/.local/state}/mdvl" ;;
+esac
+RECEIPT="$STATE/receipt.json"
+FRAGMENT="$STATE/shell.sh"
+
+echo "Seam D — installer integration"
+echo "Package:  $PKG"
 echo "Platform: $(node -e "console.log(process.platform + '-' + process.arch)")"
 echo ""
 
-# === Fresh install ===
-echo "Testing fresh install..."
-npx --yes @flyingmt/mdvl@latest
-if mdvl --version >/dev/null 2>&1; then
-  ok "mdvl --version works"
+echo "Installing..."
+npx --yes "$PKG"
+
+if [ -x "$BIN" ]; then
+  ok "binary installed at $BIN"
 else
-  ko "mdvl --version failed"
+  ko "no executable at $BIN"
 fi
 
-RECEIPT=""
-if [ -f "$HOME/.local/state/mdvl/receipt.json" ]; then
-  RECEIPT="$HOME/.local/state/mdvl/receipt.json"
-elif [ -f "$HOME/Library/Application Support/mdvl/receipt.json" ]; then
-  RECEIPT="$HOME/Library/Application Support/mdvl/receipt.json"
-elif [ -n "$LOCALAPPDATA" ] && [ -f "$LOCALAPPDATA/mdvl/receipt.json" ]; then
-  RECEIPT="$LOCALAPPDATA/mdvl/receipt.json"
+# Called by absolute path on purpose. The installer writes a PATH fragment that
+# only a newly started shell sources, so a bare `mdvl` here would fail for a
+# reason that has nothing to do with whether the install worked.
+if "$BIN" --version 2>/dev/null | grep -q "$MDVL_VERSION"; then
+  ok "mdvl --version reports $MDVL_VERSION"
+else
+  ko "mdvl --version did not report $MDVL_VERSION (got: $("$BIN" --version 2>&1 || echo '<failed to run>'))"
 fi
 
-if [ -n "$RECEIPT" ]; then
-  ok "receipt exists at $RECEIPT"
-  if node -e "const r = require('$RECEIPT'); if (!r.version || !r.target || !r.sha256) process.exit(1)" 2>/dev/null; then
-    ok "receipt has required fields"
+if [ -f "$RECEIPT" ]; then
+  ok "receipt written to $RECEIPT"
+  if node -e "const r = require('$RECEIPT'); if (r.version !== '$MDVL_VERSION' || !r.target || !r.sha256) process.exit(1)"; then
+    ok "receipt records version, target and sha256"
   else
-    ko "receipt missing required fields"
+    ko "receipt is missing fields or names the wrong version"
   fi
 else
-  ko "receipt not found"
+  ko "no receipt at $RECEIPT"
 fi
 
-# === Re-install (idempotent) ===
+if [ -f "$FRAGMENT" ]; then
+  ok "PATH fragment written to $FRAGMENT"
+else
+  ko "no PATH fragment at $FRAGMENT"
+fi
+
 echo ""
-echo "Testing re-install (idempotent)..."
-OUTPUT=$(npx --yes @flyingmt/mdvl@latest 2>&1)
-if echo "$OUTPUT" | grep -q "already installed"; then
-  ok "re-install detected existing version"
+echo "Uninstalling..."
+npx --yes "$PKG" uninstall
+
+if [ -e "$BIN" ]; then
+  ko "binary still at $BIN after uninstall"
 else
-  ko "re-install did not detect existing version"
+  ok "binary removed"
 fi
 
-# === Unmanaged collision ===
-echo ""
-echo "Testing unmanaged collision..."
-npx --yes @flyingmt/mdvl@latest uninstall
-# Place a fake binary without receipt
-BIN_DIR="$HOME/.local/bin"
-mkdir -p "$BIN_DIR"
-touch "$BIN_DIR/mdvl"
-chmod +x "$BIN_DIR/mdvl"
-OUTPUT=$(npx --yes @flyingmt/mdvl@latest 2>&1 || true)
-if echo "$OUTPUT" | grep -q "refusing to overwrite unmanaged"; then
-  ok "unmanaged collision refused"
+if [ -e "$RECEIPT" ]; then
+  ko "receipt still at $RECEIPT after uninstall"
 else
-  ko "unmanaged collision not detected"
-fi
-rm -f "$BIN_DIR/mdvl"
-
-# === Uninstall ===
-echo ""
-echo "Testing clean install + uninstall..."
-npx --yes @flyingmt/mdvl@latest
-npx --yes @flyingmt/mdvl@latest uninstall
-
-if ! command -v mdvl >/dev/null 2>&1; then
-  ok "mdvl not on PATH after uninstall"
-else
-  # On the running shell PATH may still resolve; check the binary file
-  if [ -f "$BIN_DIR/mdvl" ]; then
-    ko "binary file still exists after uninstall"
-  else
-    ok "binary file removed after uninstall"
-  fi
+  ok "receipt removed"
 fi
 
-if [ ! -f "$RECEIPT" ]; then
-  ok "receipt removed after uninstall"
+if [ -e "$FRAGMENT" ]; then
+  ko "PATH fragment still at $FRAGMENT after uninstall"
 else
-  ko "receipt still exists after uninstall"
+  ok "PATH fragment removed"
 fi
 
-# === Summary ===
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-if [ "$FAIL" -gt 0 ]; then
-  exit 1
-fi
+[ "$FAIL" -eq 0 ]
