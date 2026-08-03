@@ -123,12 +123,26 @@ function detectSupportedShells() {
   return shells;
 }
 
+// One fragment is sourced from every startup file a shell reads — zsh reads
+// .zprofile and then .zshrc, bash reads a profile and then .bashrc — so it runs
+// at least twice per login shell, and again in every nested shell on top of an
+// already-prepended PATH. An unconditional prepend therefore accumulates. The
+// `case` is POSIX, so bash and zsh both take it.
+function buildPathFragment(binaryDir) {
+  return (
+    `case ":$PATH:" in\n` +
+    `  *":${binaryDir}:"*) ;;\n` +
+    `  *) export PATH="${binaryDir}:$PATH" ;;\n` +
+    `esac\n`
+  );
+}
+
 function configurePath(binaryDir) {
   const results = [];
   const fragment = shellFragmentPath();
 
   fs.mkdirSync(path.dirname(fragment), { recursive: true });
-  fs.writeFileSync(fragment, `export PATH="${binaryDir}:$PATH"\n`);
+  fs.writeFileSync(fragment, buildPathFragment(binaryDir));
 
   const shells = detectSupportedShells();
 
@@ -294,6 +308,7 @@ function removeWindowsPath(binaryDir) {
 }
 
 module.exports = {
+  buildPathFragment,
   configurePath,
   configureWindowsPath,
   removeUnixPath,

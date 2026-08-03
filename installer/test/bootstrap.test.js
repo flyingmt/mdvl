@@ -8,7 +8,11 @@ const { execFileSync } = require("child_process");
 const { hash, hashFile, verify } = require("../lib/checksum");
 const { create, read, write, remove } = require("../lib/receipt");
 const { detect, childPackage, binaryName } = require("../lib/platform");
-const { MARKER_BEGIN, MARKER_END } = require("../lib/shells");
+const {
+  MARKER_BEGIN,
+  MARKER_END,
+  buildPathFragment,
+} = require("../lib/shells");
 
 function tmpDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mdvl-test-"));
@@ -67,6 +71,43 @@ async function run() {
   assert.ok(MARKER_BEGIN.includes("mdvl"));
   assert.ok(MARKER_END.includes("mdvl"));
   console.log("  shell markers OK");
+
+  // === PATH fragment is idempotent (#25) ===
+  // The fragment is sourced from every startup file a shell reads, so it runs
+  // more than once per shell and again in every nested shell. It shipped as an
+  // unconditional prepend and PATH accumulated — six copies of the same
+  // directory on a real machine. Sourcing it twice is the only assertion that
+  // would have caught that, so that is what this does. Run under `sh` as well
+  // as the caller's shell: the fragment must stay POSIX.
+  console.log("Testing PATH fragment...");
+  const fragmentDir = path.join(tmp, "bin");
+  const fragmentFile = path.join(tmp, "fragment.sh");
+  fs.writeFileSync(fragmentFile, buildPathFragment(fragmentDir));
+
+  for (const sh of ["sh", "bash", "zsh"]) {
+    let out;
+    try {
+      out = execFileSync(
+        sh,
+        ["-c", `. "${fragmentFile}"; . "${fragmentFile}"; printf %s "$PATH"`],
+        { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } },
+      );
+    } catch {
+      continue; // shell not installed on this runner
+    }
+    const hits = out.split(":").filter((p) => p === fragmentDir).length;
+    assert.strictEqual(
+      hits,
+      1,
+      `${sh}: sourcing the fragment twice put ${fragmentDir} on PATH ${hits} times`,
+    );
+    assert.strictEqual(
+      out.split(":")[0],
+      fragmentDir,
+      `${sh}: fragment did not put ${fragmentDir} first on PATH`,
+    );
+  }
+  console.log("  PATH fragment OK");
 
   // === published package contents ===
   // bin/mdvl.js reads <package>/checksums.json and refuses to install without
