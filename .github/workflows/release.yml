@@ -373,24 +373,11 @@ jobs:
         with:
           node-version: 24
 
-      # A version is published before it is fetchable — the registry serves
-      # reads from a CDN that lags the write by seconds. Wait for it, or the
-      # first verifier fails on a 404 that means nothing.
-      - name: Wait for the registry to serve the version
-        shell: bash
-        env:
-          VERSION: ${{ needs.resolve.outputs.version }}
-        run: |
-          for _ in $(seq 1 30); do
-            if npm view "@flyingmt/mdvl@$VERSION" version >/dev/null 2>&1; then
-              echo "@flyingmt/mdvl@$VERSION resolves."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::@flyingmt/mdvl@$VERSION never resolved on the registry." >&2
-          exit 1
-
+      # There is no wait step here on purpose. One used to poll `npm view` and
+      # it did not work: 0.1.5's macOS verifier saw `npm view` succeed and then
+      # took ETARGET from npx, because a published version reaches CDN edges at
+      # different times and the two commands reached different ones. Both
+      # scripts now retry `npx` itself, which is the thing being verified.
       - name: Seam D — installer integration (Unix)
         if: runner.os != 'Windows'
         shell: bash

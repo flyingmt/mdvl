@@ -34,7 +34,7 @@ Update or pin a specific version:
 
 ```bash
 npx --yes @flyingmt/mdvl@latest            # update to newest
-npx --yes @flyingmt/mdvl@0.1.5             # install exact version
+npx --yes @flyingmt/mdvl@0.1.6             # install exact version
 npx --yes @flyingmt/mdvl@latest uninstall  # remove
 ```
 

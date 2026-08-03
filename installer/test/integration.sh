@@ -39,8 +39,22 @@ echo "Package:  $PKG"
 echo "Platform: $(node -e "console.log(process.platform + '-' + process.arch)")"
 echo ""
 
+# A version is published before every CDN edge serves it, and edges disagree
+# with each other in the meantime. 0.1.5 proved that waiting on `npm view` is
+# not enough: the macOS verifier watched `npm view` succeed and then took
+# ETARGET from npx seconds later, having reached a different edge. Retry the
+# command actually under test instead of a proxy for it.
 echo "Installing..."
-npx --yes "$PKG"
+attempt=1
+until npx --yes "$PKG"; do
+  if [ "$attempt" -ge 10 ]; then
+    echo "npx --yes $PKG still failing after $attempt attempts" >&2
+    exit 1
+  fi
+  echo "  attempt $attempt failed — the registry may not serve $MDVL_VERSION yet; retrying in 10s"
+  attempt=$((attempt + 1))
+  sleep 10
+done
 
 if [ -x "$BIN" ]; then
   ok "binary installed at $BIN"

@@ -42,9 +42,22 @@ Write-Host "Package:  $pkg"
 Write-Host "Platform: $(node -e "console.log(process.platform + '-' + process.arch)")"
 Write-Host ''
 
+# See the note in integration.sh: a version is published before every CDN edge
+# serves it, so the command under test is retried rather than gated on a proxy
+# check that can reach a different edge.
 Write-Host 'Installing...'
-& npx --yes $pkg
-if ($LASTEXITCODE -ne 0) { Write-Error "npx --yes $pkg failed with exit code $LASTEXITCODE"; exit 1 }
+$attempt = 1
+while ($true) {
+  & npx --yes $pkg
+  if ($LASTEXITCODE -eq 0) { break }
+  if ($attempt -ge 10) {
+    Write-Error "npx --yes $pkg still failing after $attempt attempts"
+    exit 1
+  }
+  Write-Host "  attempt $attempt failed - the registry may not serve $($env:MDVL_VERSION) yet; retrying in 10s"
+  $attempt++
+  Start-Sleep -Seconds 10
+}
 
 if (Test-Path -LiteralPath $bin) { Ok "binary installed at $bin" } else { Ko "no binary at $bin" }
 
