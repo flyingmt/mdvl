@@ -12,6 +12,7 @@ const {
   MARKER_BEGIN,
   MARKER_END,
   buildPathFragment,
+  configureFishPath,
 } = require("../lib/shells");
 
 function tmpDir() {
@@ -108,6 +109,52 @@ async function run() {
     );
   }
   console.log("  PATH fragment OK");
+
+  // === an unwritable fish conf.d is a skip, not a throw (#26) ===
+  // fish is detected from the existence of ~/.config/fish alone, and that
+  // directory can belong to someone else — on one machine it was root-owned
+  // and fish was not installed. This branch used to throw, unwinding an
+  // install whose binary and receipt were already committed, so the user was
+  // told a successful install had failed.
+  console.log("Testing fish conf.d fallback...");
+  if (process.getuid && process.getuid() === 0) {
+    console.log("  fish conf.d fallback SKIPPED (running as root)");
+  } else {
+    const xdg = path.join(tmp, "xdg");
+    const lockedFish = path.join(xdg, "fish");
+    fs.mkdirSync(lockedFish, { recursive: true });
+    fs.chmodSync(lockedFish, 0o555);
+
+    const priorXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdg;
+    try {
+      const result = configureFishPath(path.join(tmp, "bin"));
+      assert.match(
+        result,
+        /^skipped fish conf\.d/,
+        `expected a skip, got: ${result}`,
+      );
+    } finally {
+      if (priorXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = priorXdg;
+      fs.chmodSync(lockedFish, 0o755);
+    }
+
+    // And it still reports success when the directory is writable.
+    const openXdg = path.join(tmp, "xdg-open");
+    fs.mkdirSync(path.join(openXdg, "fish"), { recursive: true });
+    process.env.XDG_CONFIG_HOME = openXdg;
+    try {
+      assert.strictEqual(
+        configureFishPath(path.join(tmp, "bin")),
+        "PATH added to fish conf.d",
+      );
+    } finally {
+      if (priorXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = priorXdg;
+    }
+    console.log("  fish conf.d fallback OK");
+  }
 
   // === published package contents ===
   // bin/mdvl.js reads <package>/checksums.json and refuses to install without

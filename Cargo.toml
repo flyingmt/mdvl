@@ -1,6 +1,6 @@
 [package]
 name = "mdvl"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "Hand a markdown file to a human, wait, and get back their judgement."
 license = "MIT"

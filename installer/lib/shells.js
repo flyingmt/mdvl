@@ -137,6 +137,24 @@ function buildPathFragment(binaryDir) {
   );
 }
 
+// fish is detected from the mere existence of ~/.config/fish, which can be a
+// stale directory owned by someone else — on one machine it was root-owned and
+// fish was not even installed. bash and zsh already report an unwritable
+// startup file as a skip; this branch used to throw, and the throw unwound an
+// install whose binary and receipt were already committed. A PATH step that
+// cannot write must not invalidate an install that succeeded.
+function configureFishPath(binaryDir) {
+  const fishDir = fishConfigDir();
+  const fishFile = path.join(fishDir, fishFragmentName());
+  try {
+    fs.mkdirSync(fishDir, { recursive: true });
+    fs.writeFileSync(fishFile, `fish_add_path -g "${binaryDir}"\n`);
+    return "PATH added to fish conf.d";
+  } catch (err) {
+    return `skipped fish conf.d (${err.code || "not writable"})`;
+  }
+}
+
 function configurePath(binaryDir) {
   const results = [];
   const fragment = shellFragmentPath();
@@ -171,11 +189,7 @@ function configurePath(binaryDir) {
   }
 
   if (shells.includes("fish")) {
-    const fishDir = fishConfigDir();
-    const fishFile = path.join(fishDir, fishFragmentName());
-    fs.mkdirSync(fishDir, { recursive: true });
-    fs.writeFileSync(fishFile, `fish_add_path -g "${binaryDir}"\n`);
-    results.push("PATH added to fish conf.d");
+    results.push(configureFishPath(binaryDir));
   }
 
   if (shells.length === 0) {
@@ -309,6 +323,7 @@ function removeWindowsPath(binaryDir) {
 
 module.exports = {
   buildPathFragment,
+  configureFishPath,
   configurePath,
   configureWindowsPath,
   removeUnixPath,
