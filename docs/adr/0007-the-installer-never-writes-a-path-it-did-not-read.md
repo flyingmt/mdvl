@@ -16,4 +16,4 @@ Every Windows install and uninstall now starts a PowerShell process, and the `WM
 
 Constrained Language Mode is a sharper edge than that. A locked-down enterprise PowerShell policy forbids reaching arbitrary .NET types, so `[Microsoft.Win32.Registry]::CurrentUser` never resolves and the whole script dies as `SKIP:ERROR`. Nothing is destroyed — fail-closed holds — but the `reg.exe` call this replaces did work under CLM, so on those machines the PATH now goes unset where it used to be set. There is no `reg.exe` fallback and there will not be one: a fallback reopens the exact channel this decision closed, and every corruption case comes back with it on whichever machines take that path. A CLM user adds the directory by hand, as the warning tells them to.
 
-The evidence is in `docs/research/windows-user-path-api.md` and `docs/research/installer-path-prior-art.md`, which live on the unmerged branches `research/windows-user-path-api` and `research/installer-path-prior-art` — reachable with `git show <branch>:<path>`, not from `main`.
+The evidence is in `docs/research/windows-user-path-api.md` and `docs/research/installer-path-prior-art.md`.
