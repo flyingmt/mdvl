@@ -1,0 +1,269 @@
+<!--
+	sample-blocks.html — sample.md as the running app builds it. Generated, not hand-written:
+	split by blocks.ts parseDocument (23 top-level mdast nodes), each block's HTML from
+	render.ts renderMarkdown (remark-parse + gfm + rehype + sanitize), code fences bypassing
+	the pipeline exactly as CodeFence.svelte does.
+
+	Classes swapped for the demo — everything else matches the app verbatim:
+	  * <pre> inside .block-code   app has "overflow-x-auto rounded-lg bg-muted p-3.5
+	                               font-mono text-[0.8125rem] leading-relaxed"; dropped so the
+	                               baseline stylesheet can carry it as plain CSS.
+	  * .lang-badge                app has "absolute top-2 right-3 font-mono text-[0.6875rem]
+	                               tracking-wide text-muted-foreground select-none".
+	  * .comment-rail (ul)         app has "mt-2 space-y-1.5 border-l-2 border-amber-400 pl-3",
+	                               and each <li> "flex items-start gap-2 text-sm" plus a remove
+	                               button. The button is app chrome and is left out.
+	  * .block-mermaid             the app has NO such class today — Mermaid.svelte renders
+	                               "overflow-x-auto text-center" around mermaid.js's SVG. The
+	                               class is named in SPEC.md as a thing designs may style, so it
+	                               is used here around a static stand-in for the drawn diagram.
+	                               Real diagrams come from mermaid.js at runtime.
+
+	Kept as-is (Tailwind utilities the baseline stylesheet reproduces in plain CSS):
+	  group relative / overflow-x-auto / w-max / min-w-full
+-->
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h1>md-view-linker</h1>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A coding agent hands a markdown file to a human, waits, and gets back the human's
+		judgement. A human can also open a file just to read it — that is a <strong>View</strong>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Language</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A <strong>Review</strong> is one human pass over one markdown file, identified by a review id.
+		It ends at Submit or Cancel; it does not span rounds. A <strong>Block</strong> is one top-level
+		element of the markdown document — heading, paragraph, list, code fence, mermaid
+		diagram — and is the unit a human edits or comments on.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-quote">
+		<blockquote>
+		<p>The file being reviewed was written by an Agent, which may have been reading from
+		the open web — its markdown is not trusted, so raw HTML never survives into the page.</p>
+		</blockquote>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h3>한국어 본문 확인</h3>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>에이전트가 마크다운 파일을 넘기면 사람이 브라우저에서 읽고 판단을 돌려준다.
+		읽는 사람은 문장을 평가하러 온 것이지 화면을 감상하러 온 게 아니다. 그래서 렌더링은
+		조용해야 하지만, 조용한 것과 구조가 안 보이는 것은 다르다. 긴 문서를 훑을 때
+		<code>h2</code>와 <code>h3</code>가 구분되지 않으면 사람은 위치를 잃는다.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>What a reviewer does</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ol>
+		<li>Reads the document top to bottom.</li>
+		<li>Edits a Block in place, or leaves a Comment anchored to its line range.</li>
+		<li>Submits — the edits are written to disk and the Comments are released to the Agent.</li>
+		</ol>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ul class="contains-task-list">
+		<li>
+		<p>Nothing is written until Submit. Cancel leaves the file on disk untouched.</p>
+		<ul>
+		<li>A Conflict means the file changed after the Review began, so Submit refused to write.</li>
+		<li>The human's edits are not applied and the Agent is told why.</li>
+		</ul>
+		</li>
+		<li>
+		<p><code>mdvl view</code> opens the same Block rendering with every control removed.</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Blocks carry a line range back to the file</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Comments are anchored, not free-floating</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" disabled> <del>Inline suggestions</del> — out of scope</p>
+		</li>
+		</ul>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Block kinds</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-table overflow-x-auto">
+		<div class="rendered w-max min-w-full">
+			<table>
+			<thead>
+			<tr>
+			<th>Kind</th>
+			<th>Editable</th>
+			<th>Carries comments</th>
+			<th>Notes</th>
+			</tr>
+			</thead>
+			<tbody>
+			<tr>
+			<td><code>heading</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>h1–h6, one per Block</td>
+			</tr>
+			<tr>
+			<td><code>paragraph</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>The default kind</td>
+			</tr>
+			<tr>
+			<td><code>list</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Ordered, unordered, task</td>
+			</tr>
+			<tr>
+			<td><code>table</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>GFM, scrolls inside its own box</td>
+			</tr>
+			<tr>
+			<td><code>code</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Never passes through the markdown pipeline</td>
+			</tr>
+			<tr>
+			<td><code>mermaid</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Rendered to SVG, zoomable</td>
+			</tr>
+			</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Starting a review</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The Agent never starts a Review on its own — a human runs the Skill, which shells out:</p>
+	</div>
+	<ul class="comment-rail">
+		<li>This paragraph assumes the reader knows what a Block is.</li>
+	</ul>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">bash</span>
+		<pre><code>mdvl review docs/design/reviewer-app.md --wait
+# → opens http://127.0.0.1:7681/r/8f3c1a
+# ← blocks until the human hits Submit or Cancel</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The daemon answers with the Outcome, which the Agent reads as JSON:</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">json</span>
+		<pre><code>{
+  "status": "submitted",
+  "comments": [
+    { "lines": [12, 18], "body": "This paragraph assumes the reader knows what a Block is." }
+  ]
+}</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A code sample is the one Block whose text must survive exactly, so it never goes near
+		the markdown pipeline — see <a href="docs/adr/0001-markdown-parsing-in-the-browser.md">ADR-0001</a>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Lifecycle</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-mermaid">
+		<svg viewBox="0 0 900 160" role="img" aria-label="flowchart LR: Skill runs to Daemon registers review to Browser tab opens to Human decides, branching to Write file, release comments or Disk untouched">
+			<defs>
+				<marker id="mdvl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+					<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+				</marker>
+			</defs>
+			<g fill="none" stroke="currentColor" stroke-width="1.5">
+				<rect x="10" y="60" width="80" height="36" rx="4" />
+				<rect x="120" y="60" width="160" height="36" rx="4" />
+				<rect x="310" y="60" width="125" height="36" rx="4" />
+				<path d="M 465 78 L 525 48 L 585 78 L 525 108 Z" />
+				<rect x="680" y="10" width="200" height="36" rx="4" />
+				<rect x="680" y="110" width="140" height="36" rx="4" />
+				<path d="M 90 78 H 114" marker-end="url(#mdvl-arrow)" />
+				<path d="M 280 78 H 304" marker-end="url(#mdvl-arrow)" />
+				<path d="M 435 78 H 459" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 28 H 674" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 128 H 674" marker-end="url(#mdvl-arrow)" />
+			</g>
+			<g fill="currentColor" font-size="12" text-anchor="middle">
+				<text x="50" y="82">Skill runs</text>
+				<text x="200" y="82">Daemon registers review</text>
+				<text x="372" y="82">Browser tab opens</text>
+				<text x="525" y="82">Human decides</text>
+				<text x="780" y="32">Write file, release comments</text>
+				<text x="750" y="132">Disk untouched</text>
+			</g>
+			<g fill="currentColor" font-size="11" text-anchor="start">
+				<text x="626" y="50">Submit</text>
+				<text x="626" y="106">Cancel</text>
+			</g>
+		</svg>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<hr>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Notes</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>One daemon serves one Project Root, and no file outside it can be reviewed. The daemon
+		exits when the last Review ends, so nothing lingers after the human is done. Terms to
+		<em>avoid</em> in this codebase: session, task, request for <strong>Review</strong>; node, section, chunk
+		for <strong>Block</strong>.</p>
+	</div>
+</div>

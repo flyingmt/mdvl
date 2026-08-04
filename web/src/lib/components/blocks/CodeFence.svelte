@@ -8,16 +8,12 @@
 	const code = $derived(fenceBody(source));
 </script>
 
-<div class="block-code relative">
+<!-- The look lives in app.css beside the other Block kinds; unlayered rules
+	there beat Tailwind's `@layer utilities`, so utilities here would only be a
+	second place to change the same thing. -->
+<div class="block-code">
 	{#if language}
-		<span
-			class="absolute top-2 right-3 font-mono text-[0.6875rem] tracking-wide text-muted-foreground select-none"
-		>
-			{language}
-		</span>
+		<span class="lang-badge">{language}</span>
 	{/if}
-	<pre
-		class="overflow-x-auto rounded-lg bg-muted p-3.5 font-mono text-[0.8125rem] leading-relaxed"><code
-			>{code}</code
-		></pre>
+	<pre><code>{code}</code></pre>
 </div>

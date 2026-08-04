@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- The app pins this to light, so native controls keep their light look even in dark mode. -->
+		<meta name="color-scheme" content="light" />
+		<title>B — 읽는 편집물 (Editorial Reading) · mdvl</title>
+		<style>
+			/* ==========================================================================
+			   DEMO SHIM — none of this is in app.css. It stands in for what Tailwind
+			   supplies at build time, so this file renders on file:// with no network.
+			   Reused from baseline-current.html unchanged, except .app-main's width,
+			   which this design deliberately owns (see the replacement block below).
+			   ========================================================================== */
+
+			/* -- Tailwind preflight, only the parts that change this page ------------ */
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+			}
+			h1,
+			h2,
+			h3,
+			h4,
+			h5,
+			h6,
+			p,
+			blockquote,
+			pre,
+			figure {
+				margin: 0;
+			}
+			ul,
+			ol {
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+			table {
+				text-indent: 0;
+				border-color: inherit;
+				border-collapse: collapse;
+			}
+			hr {
+				height: 0;
+				color: inherit;
+				border-top-width: 1px;
+			}
+			code,
+			pre {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+				font-size: 1em;
+			}
+			button {
+				font: inherit;
+				color: inherit;
+				background: none;
+				border: 0;
+				cursor: pointer;
+			}
+
+			/* -- @layer base from app.css, with the system font stack ---------------- */
+			html {
+				font-family: ui-sans-serif, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+			}
+			body {
+				background: var(--background);
+				color: var(--foreground);
+				-webkit-font-smoothing: antialiased;
+			}
+
+			/* -- v/+page.svelte utilities -------------------------------------------
+			   header: sticky top-0 z-20 flex items-center gap-4 border-b border-border
+			           bg-background/90 px-4 py-2.5 backdrop-blur
+			   path:   truncate font-mono text-sm text-muted-foreground                */
+			.app-header {
+				position: sticky;
+				top: 0;
+				z-index: 20;
+				display: flex;
+				align-items: center;
+				gap: 1rem;
+				border-bottom: 1px solid var(--border);
+				background: color-mix(in oklab, var(--background) 90%, transparent);
+				padding: 0.625rem 1rem;
+				backdrop-filter: blur(8px);
+			}
+			.app-header .path {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.875rem;
+				line-height: 1.25rem;
+				color: var(--muted-foreground);
+			}
+
+			/* -- BlockView.svelte / Table.svelte utilities kept on the markup -------- */
+			.relative {
+				position: relative;
+			}
+			.overflow-x-auto {
+				overflow-x: auto;
+			}
+			.w-max {
+				width: max-content;
+			}
+			.min-w-full {
+				min-width: 100%;
+			}
+
+			/* -- Demo-only theme toggle (not app chrome) ----------------------------- */
+			.demo-note {
+				margin-left: auto;
+				font-size: 0.75rem;
+				color: var(--muted-foreground);
+				white-space: nowrap;
+			}
+			.demo-toggle {
+				border: 1px solid var(--border);
+				border-radius: calc(var(--radius) * 0.6);
+				padding: 0.25rem 0.6rem;
+				font-size: 0.75rem;
+				color: var(--muted-foreground);
+			}
+			.demo-rationale {
+				margin-inline: auto;
+				max-width: var(--canvas);
+				padding: 1.75rem 1.5rem 0;
+				font-family: var(--font-display);
+			}
+			.demo-rationale h1 {
+				font-size: 1rem;
+				font-weight: 700;
+				letter-spacing: -0.01em;
+			}
+			.demo-rationale p {
+				margin-top: 0.3rem;
+				font-size: 0.875rem;
+				line-height: 1.5;
+				color: var(--muted-foreground);
+			}
+			.demo-notes {
+				margin-inline: auto;
+				max-width: var(--canvas);
+				padding: 0 1.5rem 4rem;
+				font-family: var(--font-display);
+				font-size: 0.8125rem;
+				line-height: 1.6;
+				color: var(--muted-foreground);
+			}
+			.demo-notes hr {
+				border: 0;
+				border-top: 1px solid var(--border);
+				margin: 0 0 1.25rem;
+			}
+			.demo-notes li {
+				margin-bottom: 0.3rem;
+			}
+			.demo-notes b {
+				color: var(--foreground);
+				font-weight: 600;
+			}
+
+			/* -- Base shadcn tokens, unchanged from app.css -------------------------- */
+			:root {
+				--background: oklch(1 0 0);
+				--foreground: oklch(0.145 0 0);
+				--muted: oklch(0.97 0 0);
+				--muted-foreground: oklch(0.556 0 0);
+				--border: oklch(0.922 0 0);
+				--radius: 0.625rem;
+			}
+			.dark {
+				--background: oklch(0.145 0 0);
+				--foreground: oklch(0.985 0 0);
+				--muted: oklch(0.269 0 0);
+				--muted-foreground: oklch(0.708 0 0);
+				--border: oklch(1 0 0 / 10%);
+			}
+
+			/* ==========================================================================
+			   === app.css 교체분 시작 ==================================================
+
+			   시안 B — 「읽는 편집물」. 이 화면은 UI가 아니라 조판된 페이지다.
+			   본문은 세리프로 좁게 짜고, 코드·표·다이어그램만 그 폭을 벗어나 넓게 흐른다.
+			   ========================================================================== */
+
+			/* --------------------------------------------------------------------------
+			   1. 한글 세리프 — 라틴 세리프와 색·크기를 맞추기 위한 한글 전용 페이스.
+			   macOS의 AppleMyungjo(명조)는 라틴 세리프보다 작고 가늘게 앉는다. 한글
+			   유니코드 범위만 떼어내 size-adjust로 광학 크기를 올려 리듬을 맞춘다.
+			   설치된 폰트가 없으면 이 @font-face는 조용히 무시되고 아래 스택으로 내려간다.
+			   -------------------------------------------------------------------------- */
+			@font-face {
+				font-family: 'MdvlHangulSerif';
+				src:
+					local('AppleMyungjo'),
+					local('Batang'),
+					local('바탕'),
+					local('Noto Serif KR'),
+					local('Nanum Myeongjo');
+				unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF;
+				size-adjust: 106%;
+			}
+
+			:root {
+				/* 본문 세리프. 한글 페이스를 맨 앞에 두어야 유니코드 범위가 먼저 잡힌다. */
+				--font-read: 'MdvlHangulSerif', Charter, 'Iowan Old Style', ui-serif, Georgia,
+					'Times New Roman', serif;
+				/* 제목 산세리프. 본문과 서체 분류를 갈라 위계를 크기가 아닌 질감으로 낸다. */
+				--font-display: ui-sans-serif, -apple-system, 'Helvetica Neue',
+					'Apple SD Gothic Neo', sans-serif;
+				--font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+				/* 측정폭 — 라틴 66자 안팎. 46rem(≈90자)은 장문 읽기에 너무 넓다. */
+				--measure: 35rem;
+				/* 코드·표·다이어그램이 흘러나가는 폭. 좌우 패딩 1.5rem을 빼면 912px가
+				   남아, 900px로 그려지는 다이어그램이 축소 없이 들어간다. */
+				--canvas: 60rem;
+				/* 문서 전체의 수직 리듬이 파생되는 단 하나의 기준 간격. */
+				--rhythm: 1.5rem;
+				/* 링크. blue-700은 다크 배경에서 대비가 무너져 명도만 테마별로 갈랐다. */
+				--link: oklch(0.45 0.15 255);
+				/* 조판 괘선. --border(다크에서 흰색 10%)는 다크 배경에서 사실상 보이지
+				   않아 h2 괘선이 위계 신호 노릇을 못 한다. 배경에서 전경 쪽으로 20%
+				   지점을 잡으면 두 테마 모두 같은 세기로 읽힌다. */
+				--rule: color-mix(in oklab, var(--foreground) 20%, var(--background));
+			}
+			.dark {
+				--link: oklch(0.78 0.11 245);
+			}
+
+			/* --------------------------------------------------------------------------
+			   2. 블록 폭 — 텍스트는 읽기 폭, 데이터는 필요한 만큼.
+			   블록마다 독립 컨테이너라 형제 선택자가 없다. 그래서 폭도 리듬도
+			   각 블록이 자기 몫을 스스로 선언한다.
+			   -------------------------------------------------------------------------- */
+			/* main: mx-auto w-full px-6 py-12 max-w-[58rem]  ← +page.svelte의
+			   max-w-[46rem]을 --canvas 값으로 넓혀야 한다 (아래 노트 참조). */
+			.app-main {
+				margin-inline: auto;
+				width: 100%;
+				max-width: var(--canvas);
+				padding: 3rem 1.5rem 2rem;
+			}
+
+			.block-heading,
+			.block-paragraph,
+			.block-list,
+			.block-quote,
+			.comment-rail {
+				max-width: var(--measure);
+				margin-inline: auto;
+			}
+
+			.block-code,
+			.block-table,
+			.block-mermaid {
+				max-width: var(--canvas);
+				margin-inline: auto;
+			}
+
+			/* --------------------------------------------------------------------------
+			   3. 본문
+			   -------------------------------------------------------------------------- */
+			.rendered {
+				font-family: var(--font-read);
+				font-size: 1.125rem;
+				line-height: 1.7;
+				overflow-wrap: break-word;
+			}
+
+			/* 현행의 `.rendered > :first-child { margin-top: 0 }` / `:last-child` 두 줄은
+			   삭제한다. 블록당 자식이 하나뿐이라 모든 블록의 상하 여백을 0으로 죽이던
+			   원인이다. 리듬은 아래에서 블록별로 명시한다. */
+
+			/* 수직 리듬은 전부 margin-top 하나로만 낸다. margin-bottom을 쓰지 않으므로
+			   블록이 어떤 순서로 와도 간격이 겹치지 않고, 제목은 "위는 넓고 아래는
+			   좁게"가 저절로 성립한다 — 제목 아래 간격은 뒤따르는 블록이 정한다. */
+			.block-paragraph p,
+			.block-list ul,
+			.block-list ol {
+				margin-top: calc(var(--rhythm) * 0.85);
+			}
+
+			.rendered p {
+				text-wrap: pretty;
+			}
+
+			.rendered a {
+				color: var(--link);
+				text-decoration: underline;
+				text-decoration-thickness: 0.055em;
+				text-underline-offset: 0.16em;
+			}
+
+			/* 인라인 코드 — 세리프 본문 위에서는 모노스페이스로 바뀌는 것만으로 충분히
+			   눈에 띈다. 회색 칩은 행의 리듬을 끊으므로 뺀다. */
+			.rendered code {
+				font-family: var(--font-code);
+				font-size: 0.875em;
+			}
+
+			.rendered img {
+				max-width: 100%;
+			}
+
+			/* 구분선 — 전폭 괘선 대신 가운데 짧은 선. 장을 나누는 조판 관례.
+			   짧은 만큼 진하게 긋지 않으면 아예 안 보인다. */
+			.rendered hr {
+				border: 0;
+				border-top: 1px solid var(--muted-foreground);
+				width: 4.5rem;
+				margin: calc(var(--rhythm) * 2.5) auto 0;
+			}
+
+			/* --------------------------------------------------------------------------
+			   4. 제목 — 산세리프로 갈라 본문과 서체 분류부터 다르게 한다.
+			   h2는 위에 가는 괘선을 얹어 "장이 바뀐다"를 크기가 아니라 구조로 알린다.
+			   -------------------------------------------------------------------------- */
+			.block-heading h1,
+			.block-heading h2,
+			.block-heading h3,
+			.block-heading h4,
+			.block-heading h5,
+			.block-heading h6 {
+				font-family: var(--font-display);
+				font-weight: 700;
+				line-height: 1.22;
+				text-wrap: balance;
+			}
+
+			.block-heading h1 {
+				font-size: 2.125rem;
+				letter-spacing: -0.022em;
+				margin-top: 0;
+			}
+			.block-heading h2 {
+				font-size: 1.4375rem;
+				letter-spacing: -0.014em;
+				margin-top: calc(var(--rhythm) * 2.5);
+				border-top: 1px solid var(--rule);
+				padding-top: calc(var(--rhythm) * 0.8);
+			}
+			.block-heading h3 {
+				font-size: 1.1875rem;
+				letter-spacing: -0.006em;
+				margin-top: calc(var(--rhythm) * 1.6);
+			}
+			.block-heading h4,
+			.block-heading h5,
+			.block-heading h6 {
+				font-size: 1rem;
+				margin-top: calc(var(--rhythm) * 1.4);
+			}
+
+			/* --------------------------------------------------------------------------
+			   5. 목록 — 불릿을 본문 왼쪽 바깥으로 내걸어(hanging) 글의 왼쪽 끝선을
+			   문단과 하나로 맞춘다. 눈이 매 줄 같은 x로 돌아온다.
+			   -------------------------------------------------------------------------- */
+			.block-list ul,
+			.block-list ol {
+				padding-left: 1.4em;
+				margin-left: -1.4em;
+			}
+			.block-list ul {
+				list-style: disc;
+			}
+			.block-list ol {
+				list-style: decimal;
+			}
+			.block-list li {
+				margin-top: 0.4em;
+				padding-left: 0.15em;
+			}
+			.block-list li > p {
+				margin: 0;
+			}
+			.block-list li > ul,
+			.block-list li > ol {
+				margin-top: 0.4em;
+				margin-left: 0;
+			}
+			.block-list ::marker {
+				color: var(--muted-foreground);
+			}
+
+			/* 체크리스트 — 마커를 지우고 체크박스가 그 자리를 대신한다. */
+			.block-list .task-list-item {
+				list-style: none;
+			}
+			/* 체크박스는 항상 disabled로 렌더된다(읽기 전용 문서다). 네이티브 disabled
+			   스타일은 켜짐·꺼짐이 둘 다 흐린 회색이라 체크 여부가 안 읽히고,
+			   accent-color는 disabled에 먹지 않는다. 그래서 직접 그린다. */
+			.block-list .task-list-item input[type='checkbox'] {
+				appearance: none;
+				-webkit-appearance: none;
+				position: relative;
+				width: 0.85em;
+				height: 0.85em;
+				margin-left: -1.35em;
+				margin-right: 0.5em;
+				border: 1px solid var(--muted-foreground);
+				border-radius: 0.15em;
+				vertical-align: baseline;
+				translate: 0 0.06em;
+			}
+			.block-list .task-list-item input[type='checkbox']:checked {
+				background: var(--foreground);
+				border-color: var(--foreground);
+			}
+			.block-list .task-list-item input[type='checkbox']:checked::after {
+				content: '';
+				position: absolute;
+				inset: 0.1em 0.2em 0.22em 0.2em;
+				border-right: 1.5px solid var(--background);
+				border-bottom: 1.5px solid var(--background);
+				rotate: 42deg;
+			}
+
+			/* 좁은 창에서는 내걸기를 접는다 — 왼쪽 패딩 밖으로 잘려나가지 않도록. */
+			@media (max-width: 46rem) {
+				.block-list ul,
+				.block-list ol {
+					margin-left: 0;
+				}
+			}
+
+			/* --------------------------------------------------------------------------
+			   6. 인용 — 좌측 보더와 회색 글자를 뺀다. 책의 인용문은 선을 긋지 않고
+			   들여쓰기와 한 단계 작은 크기로만 구분하며, 글자색은 본문과 같다
+			   (회색은 대비만 깎을 뿐 인용을 뜻하지 않는다).
+			   -------------------------------------------------------------------------- */
+			.block-quote blockquote {
+				margin-top: calc(var(--rhythm) * 1.25);
+				padding-left: 1.75rem;
+				font-size: 0.9375em;
+				line-height: 1.66;
+			}
+			.block-quote blockquote p {
+				margin: 0;
+			}
+
+			/* --------------------------------------------------------------------------
+			   7. 표 — 세로줄과 격자를 전부 없앤 조판 관례(위·아래 굵은 괘선, 머리글
+			   아래 가는 괘선). 칸을 넓게 쓰고 본문 폭을 벗어난다.
+			   -------------------------------------------------------------------------- */
+			.block-table {
+				margin-top: calc(var(--rhythm) * 1.5);
+			}
+			.block-table table {
+				border-collapse: collapse;
+				/* 폭을 100%로 늘리지 않는다 — 칸이 짧으면 표도 짧아야 한다.
+				   내용이 본문 폭을 넘으면 그만큼만 흘러나가고, 더 넘치면 스크롤한다. */
+				width: auto;
+				max-width: 100%;
+				font-family: var(--font-read);
+				font-size: 1rem;
+				line-height: 1.5;
+				border-top: 1px solid var(--muted-foreground);
+				border-bottom: 1px solid var(--muted-foreground);
+			}
+			.block-table th,
+			.block-table td {
+				border: 0;
+				padding: 0.6rem 1.5rem 0.6rem 0;
+				text-align: left;
+				vertical-align: baseline;
+			}
+			.block-table th:last-child,
+			.block-table td:last-child {
+				padding-right: 0;
+			}
+			.block-table thead th {
+				font-family: var(--font-display);
+				font-size: 0.8125rem;
+				font-weight: 700;
+				letter-spacing: 0.02em;
+				padding-bottom: 0.5rem;
+				border-bottom: 1px solid var(--rule);
+			}
+			.block-table tbody tr:first-child td {
+				padding-top: 0.75rem;
+			}
+
+			/* --------------------------------------------------------------------------
+			   8. 코드 — 회색 둥근 상자를 버리고 위·아래 가는 괘선 사이에 앉히는
+			   「listing」 형태로. 본문 폭을 벗어나므로 긴 줄이 접히지 않고, 글자를
+			   13px에서 15px로 올릴 여유가 생긴다.
+			   ※ CodeFence.svelte의 유틸리티 클래스 교체가 필요하다 (아래 노트).
+			   -------------------------------------------------------------------------- */
+			.block-code {
+				position: relative;
+				margin-top: calc(var(--rhythm) * 1.5);
+				padding-top: 1.35rem;
+			}
+			.block-code pre {
+				overflow-x: auto;
+				background: none;
+				border-radius: 0;
+				border-top: 1px solid var(--rule);
+				border-bottom: 1px solid var(--rule);
+				padding: 1.1rem 0 1.2rem;
+				font-family: var(--font-code);
+				font-size: 0.9375rem;
+				line-height: 1.65;
+			}
+			/* 언어 이름은 그림에 붙는 캡션처럼 왼쪽 위, 괘선 바깥에. */
+			.lang-badge {
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: auto;
+				font-family: var(--font-display);
+				font-size: 0.75rem;
+				font-weight: 600;
+				letter-spacing: 0.07em;
+				text-transform: uppercase;
+				color: var(--muted-foreground);
+				user-select: none;
+			}
+
+			/* --------------------------------------------------------------------------
+			   9. 다이어그램 — 코드와 같은 괘선 사이. 문서 안에서 「도판」은 한 겹으로 읽힌다.
+			   -------------------------------------------------------------------------- */
+			.block-mermaid {
+				overflow-x: auto;
+				margin-top: calc(var(--rhythm) * 1.5);
+				border-top: 1px solid var(--rule);
+				border-bottom: 1px solid var(--rule);
+				padding-block: 1.5rem;
+			}
+			.block-mermaid svg {
+				display: block;
+				width: 100%;
+				height: auto;
+			}
+
+			/* --------------------------------------------------------------------------
+			   10. 코멘트 레일 — 좁아진 본문 왼쪽 끝선에 맞춰 따라 들어온다.
+			   위 여백만 짧게 줘서 "위 블록의 것"임이 분명하게.
+			   ※ BlockView.svelte에 .comment-rail 클래스(또는 동등한 max-w) 필요.
+			   -------------------------------------------------------------------------- */
+			.comment-rail {
+				margin-top: 0.6rem;
+				border-left: 2px solid oklch(82.8% 0.189 84.429);
+				padding-left: 0.75rem;
+				font-family: var(--font-display);
+			}
+			.comment-rail > li + li {
+				margin-top: 0.375rem;
+			}
+			.comment-rail li {
+				font-size: 0.8125rem;
+				line-height: 1.45;
+				color: var(--muted-foreground);
+			}
+			/* === app.css 교체분 끝 =================================================== */
+		</style>
+	</head>
+	<body>
+		<div style="min-height: 100vh">
+			<header class="app-header">
+				<p class="path">docs/design/markdown-formatting/sample.md</p>
+				<!-- Demo-only: the app's header carries the path and nothing else. -->
+				<span class="demo-note">시안 B</span>
+				<button class="demo-toggle" id="theme" type="button">라이트 / 다크</button>
+			</header>
+
+			<div class="demo-rationale">
+				<h1>B — 읽는 편집물 (Editorial Reading)</h1>
+				<p>
+					읽는 사람은 문장을 판단하러 왔으므로 화면을 대시보드가 아니라 조판된 페이지로
+					짠다 — 본문은 세리프로 66자 폭에 좁게 앉히고, 코드·표·다이어그램만 그 폭을
+					벗어나 넓게 흐른다.
+				</p>
+			</div>
+
+			<main class="app-main">
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h1>md-view-linker</h1>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A coding agent hands a markdown file to a human, waits, and gets back the human's
+		judgement. A human can also open a file just to read it — that is a <strong>View</strong>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Language</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A <strong>Review</strong> is one human pass over one markdown file, identified by a review id.
+		It ends at Submit or Cancel; it does not span rounds. A <strong>Block</strong> is one top-level
+		element of the markdown document — heading, paragraph, list, code fence, mermaid
+		diagram — and is the unit a human edits or comments on.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-quote">
+		<blockquote>
+		<p>The file being reviewed was written by an Agent, which may have been reading from
+		the open web — its markdown is not trusted, so raw HTML never survives into the page.</p>
+		</blockquote>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h3>한국어 본문 확인</h3>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>에이전트가 마크다운 파일을 넘기면 사람이 브라우저에서 읽고 판단을 돌려준다.
+		읽는 사람은 문장을 평가하러 온 것이지 화면을 감상하러 온 게 아니다. 그래서 렌더링은
+		조용해야 하지만, 조용한 것과 구조가 안 보이는 것은 다르다. 긴 문서를 훑을 때
+		<code>h2</code>와 <code>h3</code>가 구분되지 않으면 사람은 위치를 잃는다.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>What a reviewer does</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ol>
+		<li>Reads the document top to bottom.</li>
+		<li>Edits a Block in place, or leaves a Comment anchored to its line range.</li>
+		<li>Submits — the edits are written to disk and the Comments are released to the Agent.</li>
+		</ol>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ul class="contains-task-list">
+		<li>
+		<p>Nothing is written until Submit. Cancel leaves the file on disk untouched.</p>
+		<ul>
+		<li>A Conflict means the file changed after the Review began, so Submit refused to write.</li>
+		<li>The human's edits are not applied and the Agent is told why.</li>
+		</ul>
+		</li>
+		<li>
+		<p><code>mdvl view</code> opens the same Block rendering with every control removed.</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Blocks carry a line range back to the file</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Comments are anchored, not free-floating</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" disabled> <del>Inline suggestions</del> — out of scope</p>
+		</li>
+		</ul>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Block kinds</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-table overflow-x-auto">
+		<div class="rendered w-max min-w-full">
+			<table>
+			<thead>
+			<tr>
+			<th>Kind</th>
+			<th>Editable</th>
+			<th>Carries comments</th>
+			<th>Notes</th>
+			</tr>
+			</thead>
+			<tbody>
+			<tr>
+			<td><code>heading</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>h1–h6, one per Block</td>
+			</tr>
+			<tr>
+			<td><code>paragraph</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>The default kind</td>
+			</tr>
+			<tr>
+			<td><code>list</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Ordered, unordered, task</td>
+			</tr>
+			<tr>
+			<td><code>table</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>GFM, scrolls inside its own box</td>
+			</tr>
+			<tr>
+			<td><code>code</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Never passes through the markdown pipeline</td>
+			</tr>
+			<tr>
+			<td><code>mermaid</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Rendered to SVG, zoomable</td>
+			</tr>
+			</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Starting a review</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The Agent never starts a Review on its own — a human runs the Skill, which shells out:</p>
+	</div>
+	<ul class="comment-rail">
+		<li>This paragraph assumes the reader knows what a Block is.</li>
+	</ul>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">bash</span>
+		<pre><code>mdvl review docs/design/reviewer-app.md --wait
+# → opens http://127.0.0.1:7681/r/8f3c1a
+# ← blocks until the human hits Submit or Cancel</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The daemon answers with the Outcome, which the Agent reads as JSON:</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">json</span>
+		<pre><code>{
+  "status": "submitted",
+  "comments": [
+    { "lines": [12, 18], "body": "This paragraph assumes the reader knows what a Block is." }
+  ]
+}</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A code sample is the one Block whose text must survive exactly, so it never goes near
+		the markdown pipeline — see <a href="docs/adr/0001-markdown-parsing-in-the-browser.md">ADR-0001</a>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Lifecycle</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-mermaid">
+		<svg viewBox="0 0 900 160" role="img" aria-label="flowchart LR: Skill runs to Daemon registers review to Browser tab opens to Human decides, branching to Write file, release comments or Disk untouched">
+			<defs>
+				<marker id="mdvl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+					<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+				</marker>
+			</defs>
+			<g fill="none" stroke="currentColor" stroke-width="1.5">
+				<rect x="10" y="60" width="80" height="36" rx="4" />
+				<rect x="120" y="60" width="160" height="36" rx="4" />
+				<rect x="310" y="60" width="125" height="36" rx="4" />
+				<path d="M 465 78 L 525 48 L 585 78 L 525 108 Z" />
+				<rect x="680" y="10" width="200" height="36" rx="4" />
+				<rect x="680" y="110" width="140" height="36" rx="4" />
+				<path d="M 90 78 H 114" marker-end="url(#mdvl-arrow)" />
+				<path d="M 280 78 H 304" marker-end="url(#mdvl-arrow)" />
+				<path d="M 435 78 H 459" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 28 H 674" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 128 H 674" marker-end="url(#mdvl-arrow)" />
+			</g>
+			<g fill="currentColor" font-size="12" text-anchor="middle">
+				<text x="50" y="82">Skill runs</text>
+				<text x="200" y="82">Daemon registers review</text>
+				<text x="372" y="82">Browser tab opens</text>
+				<text x="525" y="82">Human decides</text>
+				<text x="780" y="32">Write file, release comments</text>
+				<text x="750" y="132">Disk untouched</text>
+			</g>
+			<g fill="currentColor" font-size="11" text-anchor="start">
+				<text x="626" y="50">Submit</text>
+				<text x="626" y="106">Cancel</text>
+			</g>
+		</svg>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<hr>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Notes</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>One daemon serves one Project Root, and no file outside it can be reviewed. The daemon
+		exits when the last Review ends, so nothing lingers after the human is done. Terms to
+		<em>avoid</em> in this codebase: session, task, request for <strong>Review</strong>; node, section, chunk
+		for <strong>Block</strong>.</p>
+	</div>
+</div>
+			</main>
+
+			<div class="demo-notes">
+				<hr />
+				<ul>
+					<li>
+						<b>바꾼 값</b> — 본문 Charter/세리프 18px·행간 1.7, 측정폭 35rem(라틴 평균 66자),
+						코드·표·다이어그램만 60rem으로 흘려보냄(본문 560px / 도판 912px). 간격은 전부
+						<code>--rhythm: 1.5rem</code> 하나에서 파생(h2 ×2.5 / h3 ×1.6 / 도판 ×1.5 /
+						문단 ×0.85)하고 margin-top만 써서 블록 순서와 무관하게 겹치지 않는다.
+					</li>
+					<li>
+						<b>프로덕션 폰트</b> — 본문 Charter(→Iowan Old Style→Georgia), 한글 대체:
+						AppleMyungjo를 한글 유니코드 범위 전용 <code>@font-face</code>로 묶고
+						<code>size-adjust: 106%</code>로 라틴과 광학 크기를 맞춤. 제목·표머리·코멘트는
+						산세리프(Pretendard 유지 가능). 한글 세리프가 없는 환경에선 산세리프로 내려앉는다.
+					</li>
+					<li>
+						<b>컴포넌트 수정 필요</b> — ① <code>CodeFence.svelte</code>: <code>rounded-lg bg-muted
+						p-3.5 text-[0.8125rem]</code> 제거, 배지를 <code>right-3</code>→왼쪽으로. ②
+						<code>v/+page.svelte</code>·리뷰 페이지: <code>max-w-[46rem]</code>→<code>max-w-[60rem]</code>.
+						③ <code>BlockView.svelte</code>: 코멘트 레일에 <code>.comment-rail</code>(본문 폭 정렬용) 필요.
+						신택스 하이라이팅은 CSS로 불가 — 렌더 파이프라인 변경 사안이라 범위 밖으로 뒀다.
+					</li>
+					<li>
+						<b>이 form이 나온 곳</b> — 문서 본문은 처음부터 끝까지 읽어야 판단이 서는 산문이지만,
+						표·코드·다이어그램은 훑어서 대조하는 자료다. 한 문서 안에 읽는 것과 보는 것이
+						섞여 있으니 폭도 둘로 갈랐다.
+					</li>
+				</ul>
+			</div>
+		</div>
+
+		<script>
+			if (new URLSearchParams(location.search).get('theme') === 'dark') {
+				document.documentElement.classList.add('dark');
+			}
+			document.getElementById('theme').addEventListener('click', () => {
+				document.documentElement.classList.toggle('dark');
+			});
+		</script>
+	</body>
+</html>

@@ -2,6 +2,8 @@
 .mdvl/
 /test-results
 /graphify-out
+/.playwright-mcp
+/docs/design/markdown-formatting/shots
 /_workspace
 /_workspace_prev
 /installer/node_modules

@@ -51,15 +51,21 @@ The palette is shadcn-svelte's neutral token set — `background`, `foreground`,
 `muted`, `border`, `ring`, `destructive`. Nothing hard-codes a grey, so the whole
 interface moves together. Colour outside those tokens is reserved for meaning:
 
-| Colour | Reserved for                                             |
-| ------ | -------------------------------------------------------- |
-| Amber  | Comments, and diagrams that would not draw                |
-| Red    | Destructive actions and their confirmations               |
-| Blue   | Links inside the document — the document's own, not ours  |
+| Colour | Reserved for                                |
+| ------ | ------------------------------------------- |
+| Amber  | Comments, and diagrams that would not draw  |
+| Red    | Destructive actions and their confirmations |
 
-Body text is Pretendard Variable at 17px/1.7; only code is monospaced. Headings are weight 600
-with tightened tracking, sized 28/22/18 — enough to structure a document without
-turning it into a poster.
+A link inside the document carries no colour of its own — it is underlined and
+takes the body's colour. A second hue would compete with the writing, and the
+underline already says it is a link.
+
+Body text is Pretendard Variable at 18px/1.75; only code is monospaced. Headings are weight 700
+with tightened tracking, sized 34/26/20 — enough to structure a document without
+turning it into a poster. Every Block renders into its own container, so no sibling
+selector reaches from one Block to the next; the vertical rhythm is therefore built out
+of top margins only, each Block declaring the space it wants above itself and leaving
+nothing below for the next one to add to.
 
 ## One component per Block kind
 

@@ -22,34 +22,56 @@
 
 /*
  * Rendered markdown. Deliberately plain: the reviewer is here to judge the
- * writing, so nothing should compete with it. Scoped Svelte styles cannot reach
- * `{@html}` output, so each Block kind's rules live here beside its component.
+ * writing, so nothing should compete with it. Hierarchy is carried by size,
+ * weight and space alone — no colour, no added rules, no icons. Scoped Svelte
+ * styles cannot reach `{@html}` output, so each Block kind's rules live here
+ * beside its component.
+ *
+ * Every Block renders into its own `.rendered`, so no sibling selector can
+ * reach from one Block to the next. The vertical rhythm is therefore built out
+ * of top margins only: each Block declares the space it wants above itself and
+ * never any below, so two neighbours can never add up to a double gap. That is
+ * also why the old `.rendered > :first-child { margin-top: 0 }` pair is gone —
+ * it was zeroing the only margin each Block had.
  */
 .rendered {
-	font-size: 1.0625rem;
-	line-height: 1.7;
+	font-size: 1.125rem;
+	line-height: 1.75;
 	overflow-wrap: break-word;
+	/* Korean breaks on any syllable by default, which splits words mid-line. */
+	word-break: keep-all;
 }
 
-.rendered > :first-child {
+/*
+ * The document's first Block sits on the page padding, not on a gap. A review
+ * opens `main` with an InsertionPoint, so the first Block is not its
+ * container's first child; it is the Block with no Block before it, which is
+ * the same Block in a review and in a view.
+ */
+.block-view:not(.block-view ~ *) > :is(.block-code, .block-table, .block-mermaid),
+.block-view:not(.block-view ~ *) > .rendered > * {
 	margin-top: 0;
 }
-.rendered > :last-child {
-	margin-bottom: 0;
-}
 
+/* A link is underlined, not coloured: a second colour competes with the
+   writing, and the underline already says it is a link. */
 .rendered a {
-	color: var(--color-blue-700);
+	color: inherit;
 	text-decoration: underline;
-	text-underline-offset: 2px;
+	text-underline-offset: 0.18em;
+	text-decoration-thickness: 1px;
 }
 
+/* Headings own 700; inline emphasis must not shout at the same volume. */
+.rendered strong {
+	font-weight: 600;
+}
+
+/* Monospace is the signal. The chip it used to sit in inflated every line box
+   it appeared in, worst of all in Korean. */
 .rendered code {
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 0.875em;
-	background: var(--muted);
-	padding: 0.125em 0.35em;
-	border-radius: 0.25rem;
+	font-size: 0.925em;
 }
 
 .rendered img {
@@ -59,41 +81,56 @@
 .rendered hr {
 	border: 0;
 	border-top: 1px solid var(--border);
-	margin: 1.5em 0;
+	margin: 2.5rem 0 0;
 }
 
-/* Heading.svelte */
+/* Heading.svelte — the step between levels is space first, size second. */
 .block-heading h1,
 .block-heading h2,
 .block-heading h3,
 .block-heading h4,
 .block-heading h5,
 .block-heading h6 {
-	font-weight: 600;
-	line-height: 1.3;
-	letter-spacing: -0.01em;
-	margin-top: 0.5em;
+	font-weight: 700;
+	letter-spacing: -0.015em;
+	text-wrap: balance;
+	margin-bottom: 0;
 }
 .block-heading h1 {
-	font-size: 1.75rem;
+	font-size: 2.125rem;
+	line-height: 1.2;
+	letter-spacing: -0.022em;
+	margin-top: 4rem;
 }
 .block-heading h2 {
-	font-size: 1.375rem;
+	font-size: 1.625rem;
+	line-height: 1.3;
+	margin-top: 3.25rem;
 }
 .block-heading h3 {
+	font-size: 1.25rem;
+	line-height: 1.4;
+	letter-spacing: -0.005em;
+	margin-top: 2.25rem;
+}
+.block-heading h4,
+.block-heading h5,
+.block-heading h6 {
 	font-size: 1.125rem;
+	line-height: 1.5;
+	margin-top: 1.75rem;
 }
 
 /* Paragraph.svelte */
 .block-paragraph p {
-	margin: 0.75em 0;
+	margin: 1.375rem 0 0;
 }
 
 /* List.svelte */
 .block-list ul,
 .block-list ol {
-	margin: 0.75em 0;
-	padding-left: 1.5rem;
+	margin: 1.375rem 0 0;
+	padding-left: 1.6rem;
 }
 .block-list ul {
 	list-style: disc;
@@ -101,37 +138,96 @@
 .block-list ol {
 	list-style: decimal;
 }
-.block-list li {
-	margin: 0.25em 0;
+.block-list li + li {
+	margin-top: 0.4rem;
 }
 .block-list li > ul,
 .block-list li > ol {
-	margin: 0.25em 0;
+	margin-top: 0.4rem;
+	padding-left: 1.4rem;
+}
+/* The checkbox is already the marker; a bullet beside it is noise. */
+.block-list .task-list-item {
+	list-style: none;
+}
+.block-list .task-list-item input {
+	margin-right: 0.35rem;
 }
 
-/* Blockquote.svelte */
+/* Blockquote.svelte — an indent and a hairline, not a second text colour. */
 .block-quote blockquote {
-	margin: 0.75em 0;
-	border-left: 3px solid var(--border);
-	padding-left: 1rem;
-	color: var(--muted-foreground);
+	margin: 1.5rem 0 0;
+	border-left: 2px solid var(--border);
+	padding-left: 1.25rem;
 }
 
-/* Table.svelte */
+/* Table.svelte — the grid is gone. One rule under the header, hairlines
+   between rows, and column gaps made of padding. The margin belongs to the
+   scrolling box, not the table: `overflow-x` makes the box a formatting
+   context, so a margin inside it would never reach the Block above. */
+.block-table {
+	margin-top: 1.75rem;
+}
 .block-table table {
 	border-collapse: collapse;
 	font-size: 0.9375rem;
-	margin: 0.75em 0;
+	line-height: 1.55;
+	margin: 0;
 }
 .block-table th,
 .block-table td {
-	border: 1px solid var(--border);
-	padding: 0.4rem 0.6rem;
+	border: 0;
+	padding: 0.55rem 1.5rem 0.55rem 0;
 	text-align: left;
+	vertical-align: top;
 }
-.block-table th {
-	background: var(--muted);
+.block-table th:last-child,
+.block-table td:last-child {
+	padding-right: 0;
+}
+.block-table thead th {
+	border-bottom: 1px solid var(--foreground);
+	padding-bottom: 0.45rem;
 	font-weight: 600;
+}
+.block-table tbody td {
+	border-bottom: 1px solid var(--border);
+}
+
+/* CodeFence.svelte */
+.block-code {
+	margin-top: 1.75rem;
+}
+.block-code pre {
+	overflow-x: auto;
+	border-radius: var(--radius);
+	background: var(--muted);
+	padding: 1rem 1.125rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.875rem;
+	line-height: 1.7;
+}
+/* The badge leaves the corner it floated in and becomes a label above the box:
+   it can no longer collide with a long first line, and it reads on the page
+   background (4.74:1) instead of on the muted fill (4.35:1). */
+.lang-badge {
+	display: block;
+	margin-bottom: 0.4rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.75rem;
+	letter-spacing: 0.04em;
+	color: var(--muted-foreground);
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* Mermaid.svelte — the class sits on the wrapper of each of its states, so a
+   diagram takes the same space while it is loading as once it is drawn. The
+   same component also draws the zoom modal's canvas, which is measured to fit
+   the viewport and has no document rhythm around it, so the space belongs to a
+   diagram that is a Block. */
+.block-view .block-mermaid {
+	margin-top: 2rem;
 }
 /*
  ---break---

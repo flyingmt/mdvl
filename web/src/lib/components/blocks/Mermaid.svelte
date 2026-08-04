@@ -55,7 +55,7 @@
 </script>
 
 {#if failure}
-	<div class="rounded-lg border border-amber-300 bg-amber-50 p-3">
+	<div class="block-mermaid rounded-lg border border-amber-300 bg-amber-50 p-3">
 		<p class="text-sm font-medium text-amber-900">{t.diagramFailed}</p>
 		<p class="mt-1 font-mono text-xs whitespace-pre-wrap text-amber-800">{failure}</p>
 		<pre
@@ -67,7 +67,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<!-- eslint-disable-next-line svelte/no-static-element-interactions, svelte/click-events-have-key-events -->
 	<div
-		class="overflow-x-auto text-center {onzoom ? 'cursor-zoom-in' : ''}"
+		class="block-mermaid overflow-x-auto text-center {onzoom ? 'cursor-zoom-in' : ''}"
 		data-testid="diagram"
 		onclick={() => onzoom?.()}
 	>
@@ -75,5 +75,5 @@
 		{@html svg}
 	</div>
 {:else}
-	<div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+	<div class="block-mermaid h-24 animate-pulse rounded-lg bg-muted"></div>
 {/if}

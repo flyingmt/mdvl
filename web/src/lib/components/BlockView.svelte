@@ -77,7 +77,7 @@
 	}
 </script>
 
-<div class="group relative" data-testid="block">
+<div class="block-view group relative" data-testid="block">
 	{#if !readonly}
 		<div
 			class="absolute -top-3 right-0 z-10 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"

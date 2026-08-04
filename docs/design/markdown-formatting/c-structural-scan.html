@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- The app pins this to light, so native controls keep their light look even in dark mode. -->
+		<meta name="color-scheme" content="light" />
+		<title>구조 스캔 — mdvl</title>
+		<style>
+			/* ==========================================================================
+			   DEMO SHIM — none of this is in app.css. It stands in for what Tailwind
+			   supplies at build time, so this file renders on file:// with no network.
+			   Carried over from baseline-current.html unchanged except where marked.
+
+			   Production font is **Pretendard Variable** (app.css imports it). This demo
+			   uses the system stack instead; Korean falls back to Apple SD Gothic Neo on
+			   macOS, so Korean line lengths here are close but not identical to the app.
+			   ========================================================================== */
+
+			/* -- Tailwind preflight, only the parts that change this page ------------ */
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+			}
+			h1,
+			h2,
+			h3,
+			h4,
+			h5,
+			h6,
+			p,
+			blockquote,
+			pre,
+			figure {
+				margin: 0;
+			}
+			ul,
+			ol {
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+			table {
+				text-indent: 0;
+				border-color: inherit;
+				border-collapse: collapse;
+			}
+			hr {
+				height: 0;
+				color: inherit;
+				border-top-width: 1px;
+			}
+			code,
+			pre {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+				font-size: 1em;
+			}
+			button {
+				font: inherit;
+				color: inherit;
+				background: none;
+				border: 0;
+				cursor: pointer;
+			}
+
+			/* -- Tokens Tailwind's own theme provides, used by app.css --------------- */
+			:root {
+				--color-blue-700: oklch(48.8% 0.243 264.376);
+				--color-amber-400: oklch(82.8% 0.189 84.429);
+			}
+
+			/* -- @layer base from app.css, with the system font stack ---------------- */
+			html {
+				font-family: ui-sans-serif, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+			}
+			body {
+				background: var(--background);
+				color: var(--foreground);
+				-webkit-font-smoothing: antialiased;
+			}
+
+			/* -- v/+page.svelte utilities. `main` differs from the app: max-w-[46rem]
+			   becomes 50rem so code/table/diagram get the wide rail. See bottom note. */
+			.app-header {
+				position: sticky;
+				top: 0;
+				z-index: 20;
+				display: flex;
+				align-items: center;
+				gap: 1rem;
+				border-bottom: 1px solid var(--border);
+				background: color-mix(in oklab, var(--background) 90%, transparent);
+				padding: 0.625rem 1rem;
+				backdrop-filter: blur(8px);
+			}
+			.app-header .path {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.875rem;
+				line-height: 1.25rem;
+				color: var(--muted-foreground);
+			}
+			.app-main {
+				margin-inline: auto;
+				width: 100%;
+				max-width: 50rem;
+				padding: 2.25rem 1rem 5rem;
+			}
+
+			/* -- BlockView.svelte / Table.svelte utilities kept on the markup -------- */
+			.relative {
+				position: relative;
+			}
+			.overflow-x-auto {
+				overflow-x: auto;
+			}
+			.w-max {
+				width: max-content;
+			}
+			.min-w-full {
+				min-width: 100%;
+			}
+
+			/* -- BlockView.svelte comment rail: mt-2 space-y-1.5 border-l-2
+			      border-amber-400 pl-3, each li flex items-start gap-2 text-sm.
+			      Untouched by this design — see the note on the left gutter. ------- */
+			.comment-rail {
+				margin-top: 0.5rem;
+				border-left: 2px solid var(--color-amber-400);
+				padding-left: 0.75rem;
+			}
+			.comment-rail > li + li {
+				margin-top: 0.375rem;
+			}
+			.comment-rail li {
+				font-size: 0.875rem;
+				line-height: 1.25rem;
+			}
+
+			/* -- Mermaid.svelte draws a sized SVG; the stand-in needs the sizing ----- */
+			.block-mermaid svg {
+				display: block;
+				width: 100%;
+				min-width: 32rem;
+				height: auto;
+			}
+
+			/* -- Demo-only chrome (not app chrome) ----------------------------------- */
+			.demo-note {
+				margin-left: auto;
+				max-width: 30rem;
+				text-align: right;
+				font-size: 0.75rem;
+				line-height: 1.4;
+				color: var(--muted-foreground);
+			}
+			.demo-note b {
+				color: var(--foreground);
+				font-weight: 600;
+			}
+			.demo-toggle {
+				flex: none;
+				border: 1px solid var(--border);
+				border-radius: calc(var(--radius) * 0.6);
+				padding: 0.25rem 0.6rem;
+				font-size: 0.75rem;
+				color: var(--muted-foreground);
+			}
+			.demo-footer {
+				margin-inline: auto;
+				max-width: 50rem;
+				padding: 0 1rem 3rem;
+				font-size: 0.8125rem;
+				line-height: 1.65;
+				color: var(--muted-foreground);
+			}
+			.demo-footer hr {
+				border: 0;
+				border-top: 1px solid var(--border);
+				margin: 0 0 1.25rem;
+			}
+			.demo-footer p {
+				margin: 0 0 0.3rem;
+			}
+			.demo-footer b {
+				color: var(--foreground);
+				font-weight: 600;
+			}
+
+			/* ==========================================================================
+			   === app.css 교체분 시작 ==================================================
+
+			   「구조 스캔」 — 리뷰어는 문서를 읽기만 하지 않고 훑는다. 그래서 위계를
+			   공간이나 서체가 아니라 **기하**로 만든다. 규칙 두 가지뿐:
+
+			     1) 가로선의 길이가 섹션의 깊이다. h2 = 본문 폭 전체, h3 = 2.5rem 눈금.
+			        세로선은 코멘트 레일(amber) 하나만 남긴다 — 좌측 여백은 비워 둔다.
+			     2) 레일이 둘이다. 산문은 좁은 --measure, 코드/표/다이어그램은 넓은 main.
+			        훑을 때 "읽을 것"과 "대조할 것"이 폭으로 갈린다.
+
+			   수직 리듬은 **margin-top 전용**이다. 블록마다 .rendered 컨테이너가 따로라
+			   형제 선택자가 안 통하므로, 아래쪽 margin을 0으로 두면 블록 사이 간격이
+			   언제나 "뒤 블록의 margin-top" 하나로 결정된다. 카드(코드/표/다이어그램)만
+			   BFC라 margin-block 대칭으로 준다.
+			   ========================================================================== */
+
+			/*
+			 * Rendered markdown. Deliberately plain: the reviewer is here to judge the
+			 * writing, so nothing should compete with it. Scoped Svelte styles cannot reach
+			 * `{@html}` output, so each Block kind's rules live here beside its component.
+			 */
+			.rendered {
+				font-size: 1.0625rem;
+				line-height: 1.62;
+				overflow-wrap: break-word;
+			}
+
+			/* 산문 레일. 카드(.block-code/.block-table/.block-mermaid)는 여기 없으므로
+			   main의 넓은 폭을 그대로 쓴다. 코멘트 레일도 산문에 맞춰 정렬한다. */
+			.block-heading,
+			.block-paragraph,
+			.block-list,
+			.block-quote,
+			.comment-rail {
+				max-width: var(--measure);
+				margin-inline: auto;
+			}
+
+			.rendered a {
+				color: var(--link);
+				text-decoration: underline;
+				text-underline-offset: 2px;
+			}
+
+			.rendered code {
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.875em;
+				background: var(--muted);
+				padding: 0.1em 0.32em;
+				border-radius: 0.25rem;
+			}
+
+			.rendered del {
+				color: var(--muted-foreground);
+			}
+
+			.rendered img {
+				max-width: 100%;
+			}
+
+			/* 저자가 명시한 문서 단절. h2의 가로선과 헷갈리면 안 되므로 길이와 정렬을
+			   반대로 준다 — 짧고 가운데. */
+			.rendered hr {
+				border: 0;
+				border-top: 1px solid var(--rule);
+				width: 4rem;
+				margin: 3rem auto 0;
+			}
+
+			/* Heading.svelte — 선의 길이가 곧 위계 */
+			.block-heading h1,
+			.block-heading h2,
+			.block-heading h3,
+			.block-heading h4,
+			.block-heading h5,
+			.block-heading h6 {
+				font-weight: 600;
+				line-height: 1.28;
+				letter-spacing: -0.015em;
+				margin: 0;
+			}
+			.block-heading h1 {
+				font-size: 1.875rem;
+				letter-spacing: -0.022em;
+			}
+			/* h2 = 섹션 시작. 본문 폭을 가로지르는 헤어라인 위로 큰 공백, 아래로 작은
+			   공백 — 선이 앞 섹션을 닫는 게 아니라 다음 섹션을 여는 것으로 읽힌다. */
+			.block-heading h2 {
+				font-size: 1.375rem;
+				margin-top: 3.4rem;
+				padding-top: 1.25rem;
+				border-top: 1px solid var(--rule);
+			}
+			/* h3 = 같은 가로선의 짧은 형제. 2.5rem 눈금이라 축소해서 봐도 h2 선과
+			   길이로 즉시 갈린다. 세로 마커를 쓰지 않는 이유는 하단 노트 참고. */
+			.block-heading h3 {
+				position: relative;
+				font-size: 1.125rem;
+				margin-top: 2.6rem;
+				padding-top: 0.9rem;
+			}
+			.block-heading h3::before {
+				content: '';
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 2.5rem;
+				height: 2px;
+				background: var(--foreground);
+			}
+			.block-heading h4,
+			.block-heading h5,
+			.block-heading h6 {
+				font-size: 1rem;
+				margin-top: 1.9rem;
+			}
+
+			/* Paragraph.svelte */
+			.block-paragraph p {
+				margin: var(--gap-block) 0 0;
+			}
+
+			/* List.svelte */
+			.block-list ul,
+			.block-list ol {
+				margin: var(--gap-block) 0 0;
+				padding-left: 1.5rem;
+			}
+			.block-list ul {
+				list-style: disc;
+			}
+			.block-list ol {
+				list-style: decimal;
+			}
+			.block-list li {
+				margin: 0.3rem 0 0;
+			}
+			.block-list li::marker {
+				color: var(--muted-foreground);
+			}
+			.block-list li > ul,
+			.block-list li > ol {
+				margin-top: 0.3rem;
+			}
+			.block-list li > p + p {
+				margin-top: 0.5rem;
+			}
+			/* 체크박스가 마커 자리를 대신하므로 disc를 끄고 그 자리로 당긴다. */
+			.block-list .task-list-item {
+				list-style: none;
+			}
+			.block-list input[type='checkbox'] {
+				margin: 0 0.45rem 0 -1.45rem;
+				width: 0.95em;
+				height: 0.95em;
+				vertical-align: -0.1em;
+				accent-color: var(--foreground);
+			}
+
+			/* Blockquote.svelte — 현행의 muted-foreground(라이트 4.7:1, muted 위에선
+			   4.3:1)를 버리고 본문 색으로. 인용은 흐린 글이 아니라 남의 글이다. */
+			.block-quote blockquote {
+				margin: var(--gap-block) 0 0;
+				border-left: 2px solid var(--rule);
+				padding-left: 1.1rem;
+				color: var(--foreground);
+			}
+
+			/* Table.svelte — 셀 격자(30줄 넘는 선)를 지우고 zebra 한 겹으로 바꾼다.
+			   가로 스크롤이 잘리는 지점을 보여줘야 하므로 바깥 테두리만 남긴다. */
+			.block-table {
+				margin-block: var(--gap-card);
+				border: 1px solid var(--rule);
+				border-radius: var(--radius);
+			}
+			.block-table table {
+				border-collapse: collapse;
+				font-size: 0.9375rem;
+				line-height: 1.45;
+				margin: 0;
+				width: 100%;
+			}
+			.block-table th,
+			.block-table td {
+				padding: 0.5rem 0.85rem;
+				text-align: left;
+			}
+			.block-table th {
+				font-weight: 600;
+				font-size: 0.8125rem;
+				letter-spacing: 0.03em;
+				border-bottom: 1px solid var(--muted-foreground);
+				white-space: nowrap;
+			}
+			.block-table tbody tr:nth-child(even) {
+				background: var(--muted);
+			}
+			/* 표 안의 코드형 값은 칩이 아니라 서체로만 구분한다 — 칩이 줄마다 뜨면
+			   zebra가 안 읽힌다. */
+			.block-table td code {
+				background: none;
+				padding: 0;
+				font-size: 0.9em;
+			}
+			/* GFM의 :---: 정렬은 rehype가 인라인 style로 심어 주므로 그대로 존중된다. */
+
+			/* CodeFence.svelte — 배지를 떠 있는 라벨에서 카드 상단 바로 내린다.
+			   컴포넌트 클래스 교체 필요(하단 노트). */
+			.block-code {
+				margin-block: var(--gap-card);
+				border: 1px solid var(--rule);
+				border-radius: var(--radius);
+				overflow: hidden;
+			}
+			.lang-badge {
+				display: block;
+				background: var(--muted);
+				border-bottom: 1px solid var(--rule);
+				padding: 0.35rem 0.9rem;
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.75rem;
+				letter-spacing: 0.04em;
+				color: var(--foreground);
+				user-select: none;
+			}
+			.block-code pre {
+				overflow-x: auto;
+				margin: 0;
+				padding: 0.85rem 0.9rem;
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.875rem;
+				line-height: 1.55;
+			}
+
+			/* Mermaid.svelte — 선 그림은 그 자체가 기하라서 테두리를 두르지 않는다.
+			   `.block-mermaid` 클래스 추가 필요(하단 노트). */
+			.block-mermaid {
+				margin-block: var(--gap-card);
+				overflow-x: auto;
+			}
+
+			/* 좁은 화면에서는 두 레일이 하나로 합쳐진다. */
+			@media (max-width: 40rem) {
+				.block-heading h2 {
+					margin-top: 2.6rem;
+				}
+			}
+			/*
+			 ---break---
+			 */
+			:root {
+				--background: oklch(1 0 0);
+				--foreground: oklch(0.145 0 0);
+				--card: oklch(1 0 0);
+				--card-foreground: oklch(0.145 0 0);
+				--popover: oklch(1 0 0);
+				--popover-foreground: oklch(0.145 0 0);
+				--primary: oklch(0.205 0 0);
+				--primary-foreground: oklch(0.985 0 0);
+				--secondary: oklch(0.97 0 0);
+				--secondary-foreground: oklch(0.205 0 0);
+				--muted: oklch(0.97 0 0);
+				--muted-foreground: oklch(0.556 0 0);
+				--accent: oklch(0.97 0 0);
+				--accent-foreground: oklch(0.205 0 0);
+				--destructive: oklch(0.577 0.245 27.325);
+				--border: oklch(0.922 0 0);
+				--input: oklch(0.922 0 0);
+				--ring: oklch(0.708 0 0);
+				--chart-1: oklch(0.87 0 0);
+				--chart-2: oklch(0.556 0 0);
+				--chart-3: oklch(0.439 0 0);
+				--chart-4: oklch(0.371 0 0);
+				--chart-5: oklch(0.269 0 0);
+				--radius: 0.625rem;
+				--sidebar: oklch(0.985 0 0);
+				--sidebar-foreground: oklch(0.145 0 0);
+				--sidebar-primary: oklch(0.205 0 0);
+				--sidebar-primary-foreground: oklch(0.985 0 0);
+				--sidebar-accent: oklch(0.97 0 0);
+				--sidebar-accent-foreground: oklch(0.205 0 0);
+				--sidebar-border: oklch(0.922 0 0);
+				--sidebar-ring: oklch(0.708 0 0);
+
+				/* --- 이 시안이 더한 토큰 ------------------------------------------- */
+				/* 산문 레일. 17px에서 약 72자 — 훑을 때 시선이 되돌아올 거리를 짧게. */
+				--measure: 38rem;
+				/* 조인 본문 간격 / 카드 앞뒤 간격. 섹션 간격(3.4rem)과 3배 이상 차이 */
+				--gap-block: 1.05rem;
+				--gap-card: 1.9rem;
+				/* 선이 위계를 지는 시안이라 선의 무게가 테마마다 같아야 한다. 현행
+				   --border는 라이트 1.26:1 : 다크 2.88:1로 두 배 넘게 벌어져 있다.
+				   이 토큰은 1.90:1 / 1.98:1 (아래 .dark 참고). */
+				--rule: color-mix(in oklab, var(--foreground) 24%, var(--background));
+				--link: var(--color-blue-700);
+			}
+			/*
+			 ---break---
+			 */
+			.dark {
+				--background: oklch(0.145 0 0);
+				--foreground: oklch(0.985 0 0);
+				--card: oklch(0.205 0 0);
+				--card-foreground: oklch(0.985 0 0);
+				--popover: oklch(0.205 0 0);
+				--popover-foreground: oklch(0.985 0 0);
+				--primary: oklch(0.922 0 0);
+				--primary-foreground: oklch(0.205 0 0);
+				--secondary: oklch(0.269 0 0);
+				--secondary-foreground: oklch(0.985 0 0);
+				--muted: oklch(0.269 0 0);
+				--muted-foreground: oklch(0.708 0 0);
+				--accent: oklch(0.269 0 0);
+				--accent-foreground: oklch(0.985 0 0);
+				--destructive: oklch(0.704 0.191 22.216);
+				--border: oklch(1 0 0 / 10%);
+				--input: oklch(1 0 0 / 15%);
+				--ring: oklch(0.556 0 0);
+				--chart-1: oklch(0.87 0 0);
+				--chart-2: oklch(0.556 0 0);
+				--chart-3: oklch(0.439 0 0);
+				--chart-4: oklch(0.371 0 0);
+				--chart-5: oklch(0.269 0 0);
+				--sidebar: oklch(0.205 0 0);
+				--sidebar-foreground: oklch(0.985 0 0);
+				--sidebar-primary: oklch(0.488 0.243 264.376);
+				--sidebar-primary-foreground: oklch(0.985 0 0);
+				--sidebar-accent: oklch(0.269 0 0);
+				--sidebar-accent-foreground: oklch(0.985 0 0);
+				--sidebar-border: oklch(1 0 0 / 10%);
+				--sidebar-ring: oklch(0.556 0 0);
+
+				/* 같은 무게의 선을 다크에서도 얻으려면 섞는 비율이 조금 더 높아야 한다. */
+				--rule: color-mix(in oklab, var(--foreground) 28%, var(--background));
+				/* blue-700은 다크 배경에서 2.90:1 — 본문 하한 미달이라 밝은 쪽으로.
+				   7.82:1. 같은 색상각(264.376)이라 라이트와 한 계열로 읽힌다. */
+				--link: oklch(0.72 0.15 264.376);
+			}
+			/* === app.css 교체분 끝 ================================================= */
+		</style>
+	</head>
+	<body>
+		<div style="min-height: 100vh">
+			<header class="app-header">
+				<p class="path">docs/design/markdown-formatting/sample.md</p>
+				<!-- Demo-only: the app's header carries the path and nothing else. -->
+				<span class="demo-note"
+					><b>구조 스캔</b> — 리뷰어는 읽지 않고 훑는다. 선의 길이로 섹션의 깊이를 못박고,
+					산문과 대조할 것(코드·표·그림)을 폭으로 가른다.</span
+				>
+				<button class="demo-toggle" id="theme" type="button">라이트 / 다크</button>
+			</header>
+
+			<main class="app-main">
+<!--
+	sample-blocks.html — sample.md as the running app builds it. Generated, not hand-written:
+	split by blocks.ts parseDocument (23 top-level mdast nodes), each block's HTML from
+	render.ts renderMarkdown (remark-parse + gfm + rehype + sanitize), code fences bypassing
+	the pipeline exactly as CodeFence.svelte does.
+-->
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h1>md-view-linker</h1>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A coding agent hands a markdown file to a human, waits, and gets back the human's
+		judgement. A human can also open a file just to read it — that is a <strong>View</strong>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Language</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A <strong>Review</strong> is one human pass over one markdown file, identified by a review id.
+		It ends at Submit or Cancel; it does not span rounds. A <strong>Block</strong> is one top-level
+		element of the markdown document — heading, paragraph, list, code fence, mermaid
+		diagram — and is the unit a human edits or comments on.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-quote">
+		<blockquote>
+		<p>The file being reviewed was written by an Agent, which may have been reading from
+		the open web — its markdown is not trusted, so raw HTML never survives into the page.</p>
+		</blockquote>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h3>한국어 본문 확인</h3>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>에이전트가 마크다운 파일을 넘기면 사람이 브라우저에서 읽고 판단을 돌려준다.
+		읽는 사람은 문장을 평가하러 온 것이지 화면을 감상하러 온 게 아니다. 그래서 렌더링은
+		조용해야 하지만, 조용한 것과 구조가 안 보이는 것은 다르다. 긴 문서를 훑을 때
+		<code>h2</code>와 <code>h3</code>가 구분되지 않으면 사람은 위치를 잃는다.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>What a reviewer does</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ol>
+		<li>Reads the document top to bottom.</li>
+		<li>Edits a Block in place, or leaves a Comment anchored to its line range.</li>
+		<li>Submits — the edits are written to disk and the Comments are released to the Agent.</li>
+		</ol>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-list">
+		<ul class="contains-task-list">
+		<li>
+		<p>Nothing is written until Submit. Cancel leaves the file on disk untouched.</p>
+		<ul>
+		<li>A Conflict means the file changed after the Review began, so Submit refused to write.</li>
+		<li>The human's edits are not applied and the Agent is told why.</li>
+		</ul>
+		</li>
+		<li>
+		<p><code>mdvl view</code> opens the same Block rendering with every control removed.</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Blocks carry a line range back to the file</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" checked disabled> Comments are anchored, not free-floating</p>
+		</li>
+		<li class="task-list-item">
+		<p><input type="checkbox" disabled> <del>Inline suggestions</del> — out of scope</p>
+		</li>
+		</ul>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Block kinds</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-table overflow-x-auto">
+		<div class="rendered w-max min-w-full">
+			<table>
+			<thead>
+			<tr>
+			<th>Kind</th>
+			<th>Editable</th>
+			<th>Carries comments</th>
+			<th>Notes</th>
+			</tr>
+			</thead>
+			<tbody>
+			<tr>
+			<td><code>heading</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>h1–h6, one per Block</td>
+			</tr>
+			<tr>
+			<td><code>paragraph</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>The default kind</td>
+			</tr>
+			<tr>
+			<td><code>list</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Ordered, unordered, task</td>
+			</tr>
+			<tr>
+			<td><code>table</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>GFM, scrolls inside its own box</td>
+			</tr>
+			<tr>
+			<td><code>code</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Never passes through the markdown pipeline</td>
+			</tr>
+			<tr>
+			<td><code>mermaid</code></td>
+			<td>yes</td>
+			<td>yes</td>
+			<td>Rendered to SVG, zoomable</td>
+			</tr>
+			</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Starting a review</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The Agent never starts a Review on its own — a human runs the Skill, which shells out:</p>
+	</div>
+	<ul class="comment-rail">
+		<li>This paragraph assumes the reader knows what a Block is.</li>
+	</ul>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">bash</span>
+		<pre><code>mdvl review docs/design/reviewer-app.md --wait
+# → opens http://127.0.0.1:7681/r/8f3c1a
+# ← blocks until the human hits Submit or Cancel</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>The daemon answers with the Outcome, which the Agent reads as JSON:</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-code relative">
+		<span class="lang-badge">json</span>
+		<pre><code>{
+  "status": "submitted",
+  "comments": [
+    { "lines": [12, 18], "body": "This paragraph assumes the reader knows what a Block is." }
+  ]
+}</code></pre>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>A code sample is the one Block whose text must survive exactly, so it never goes near
+		the markdown pipeline — see <a href="docs/adr/0001-markdown-parsing-in-the-browser.md">ADR-0001</a>.</p>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Lifecycle</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="block-mermaid">
+		<svg viewBox="0 0 900 160" role="img" aria-label="flowchart LR: Skill runs to Daemon registers review to Browser tab opens to Human decides, branching to Write file, release comments or Disk untouched">
+			<defs>
+				<marker id="mdvl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+					<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+				</marker>
+			</defs>
+			<g fill="none" stroke="currentColor" stroke-width="1.5">
+				<rect x="10" y="60" width="80" height="36" rx="4" />
+				<rect x="120" y="60" width="160" height="36" rx="4" />
+				<rect x="310" y="60" width="125" height="36" rx="4" />
+				<path d="M 465 78 L 525 48 L 585 78 L 525 108 Z" />
+				<rect x="680" y="10" width="200" height="36" rx="4" />
+				<rect x="680" y="110" width="140" height="36" rx="4" />
+				<path d="M 90 78 H 114" marker-end="url(#mdvl-arrow)" />
+				<path d="M 280 78 H 304" marker-end="url(#mdvl-arrow)" />
+				<path d="M 435 78 H 459" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 28 H 674" marker-end="url(#mdvl-arrow)" />
+				<path d="M 585 78 H 620 V 128 H 674" marker-end="url(#mdvl-arrow)" />
+			</g>
+			<g fill="currentColor" font-size="12" text-anchor="middle">
+				<text x="50" y="82">Skill runs</text>
+				<text x="200" y="82">Daemon registers review</text>
+				<text x="372" y="82">Browser tab opens</text>
+				<text x="525" y="82">Human decides</text>
+				<text x="780" y="32">Write file, release comments</text>
+				<text x="750" y="132">Disk untouched</text>
+			</g>
+			<g fill="currentColor" font-size="11" text-anchor="start">
+				<text x="626" y="50">Submit</text>
+				<text x="626" y="106">Cancel</text>
+			</g>
+		</svg>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<hr>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-heading">
+		<h2>Notes</h2>
+	</div>
+</div>
+<div class="group relative" data-testid="block">
+	<div class="rendered block-paragraph">
+		<p>One daemon serves one Project Root, and no file outside it can be reviewed. The daemon
+		exits when the last Review ends, so nothing lingers after the human is done. Terms to
+		<em>avoid</em> in this codebase: session, task, request for <strong>Review</strong>; node, section, chunk
+		for <strong>Block</strong>.</p>
+	</div>
+</div>
+			</main>
+
+			<footer class="demo-footer">
+				<hr />
+				<p>
+					<b>바꾼 것</b> — 본문 17px/행간 1.7→<b>1.62</b>, 산문 폭 46rem→<b>38rem</b>(약 72자)에
+					코드·표·그림만 <b>50rem</b>으로 넓히는 2레일. 블록 간격은 <b>margin-top 전용</b>(산문
+					1.05rem, 카드 1.9rem, h3 2.6rem, h2 3.4rem+헤어라인) — 현행의
+					<code>.rendered &gt; :first-child { margin-top: 0 }</code> 두 줄을 삭제해 View의 간격 0을 없앴다.
+				</p>
+				<p>
+					<b>위계</b> — 가로선의 길이가 깊이다: h2는 산문 폭 전체, h3는 2.5rem 눈금. 세로선은 코멘트
+					레일(amber) 하나만 쓰도록 좌측 여백을 통째로 비웠다.
+				</p>
+				<p>
+					<b>컴포넌트 수정 필요</b> — <code>CodeFence.svelte</code>(배지가 <code>absolute</code>에서 상단 바로),
+					<code>Mermaid.svelte</code>(<code>.block-mermaid</code> 클래스 추가), <code>v/+page.svelte</code>·<code>r/+page.svelte</code>(<code>max-w-[46rem]</code>→<code>max-w-[50rem]</code>).
+					신택스 하이라이팅은 CSS만으로 안 되므로 이 시안에 없다.
+				</p>
+				<p>
+					<b>폰트</b> — 프로덕션 Pretendard Variable, 이 데모의 한글 대체 Apple SD Gothic Neo(시스템 스택).
+					본문 서체는 바꾸지 않았다. 새 토큰 둘: <code>--rule</code>(현행 <code>--border</code>는 라이트 1.26:1 : 다크
+					2.88:1로 무게가 두 배 넘게 어긋난다 → 1.90:1 / 1.98:1로 맞춤), <code>--link</code>(다크에서 blue-700이
+					2.90:1 → 7.82:1).
+				</p>
+				<p>
+					<b>이 form의 출처</b> — 이 문서가 스스로 말한다: “긴 문서를 훑을 때 <code>h2</code>와 <code>h3</code>가
+					구분되지 않으면 사람은 위치를 잃는다”, 그리고 Block kinds 표가 코드·표·다이어그램을 산문과 다른
+					종류로 세어 놓았다.
+				</p>
+			</footer>
+		</div>
+
+		<script>
+			if (new URLSearchParams(location.search).get('theme') === 'dark') {
+				document.documentElement.classList.add('dark');
+			}
+			document.getElementById('theme').addEventListener('click', () => {
+				document.documentElement.classList.toggle('dark');
+			});
+		</script>
+	</body>
+</html>
