@@ -69,6 +69,13 @@ if [ -f "$ROOT/installer/test/bootstrap.test.js" ]; then
 	step "installer · seam C" in_root node installer/test/bootstrap.test.js
 fi
 
+# The destructive User PATH cases need a real registry, so this one reports
+# SKIPPED and exits 0 off Windows — free here, real coverage the moment the
+# gate is run on Windows.
+if [ -f "$ROOT/installer/test/windows-path.test.js" ]; then
+	step "installer · seam C (Windows PATH)" in_root node installer/test/windows-path.test.js
+fi
+
 if [ "$SCOPE" != "rust" ] && [ "$SCOPE" != "quick" ]; then
 	step "web · seam B"       in_web npx playwright test
 fi

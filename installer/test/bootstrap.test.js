@@ -12,7 +12,9 @@ const {
   MARKER_BEGIN,
   MARKER_END,
   buildPathFragment,
+  buildWindowsPathScript,
   configureFishPath,
+  configureWindowsPath,
 } = require("../lib/shells");
 
 function tmpDir() {
@@ -155,6 +157,89 @@ async function run() {
     }
     console.log("  fish conf.d fallback OK");
   }
+
+  // === the Windows User PATH writer, as far as any platform can see it ===
+  // The destructive cases need a real registry and live in
+  // installer/test/windows-path.test.js, which only runs on a Windows runner.
+  // What is checkable anywhere is the transport, and the transport is where
+  // five of the six documented destruction paths came from (#29 root 2): the
+  // PATH crossed a cmd command line and stdout, so it met %VAR% expansion,
+  // quote collapse and the console code page on the way. Nothing below can
+  // prove the writer preserves a value — only that it is not built out of the
+  // parts that lost one.
+  console.log("Testing the Windows User PATH transport...");
+  const shellsSource = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "shells.js"),
+    "utf8",
+  );
+  const binSource = fs.readFileSync(
+    path.join(__dirname, "..", "bin", "mdvl.js"),
+    "utf8",
+  );
+  assert.ok(
+    !/\bexecSync\b/.test(shellsSource + binSource),
+    "execSync always runs through ComSpec — the User PATH must not cross a " +
+      "shell, from either lib/shells.js or bin/mdvl.js",
+  );
+  assert.ok(
+    !/\breg (query|add)\b/.test(shellsSource),
+    "reg.exe carries the PATH over a command line and stdout, and its output " +
+      "format and encoding are unspecified — that is the corruption channel",
+  );
+  assert.ok(
+    /"-EncodedCommand"/.test(shellsSource) && !/"-Command"/.test(shellsSource),
+    "the script must reach powershell.exe as -EncodedCommand base64: the " +
+      "script body contains quotes, and -Command hands them to another round " +
+      "of parsing, so the whole PATH step degrades to a silent SKIP:ERROR",
+  );
+
+  const hostileDir = "C:\\Users\\한글'; Remove-Item C:\\ -Recurse; #\\bin";
+  for (const mode of ["add", "remove"]) {
+    const script = buildWindowsPathScript(hostileDir, "Environment", mode);
+    assert.ok(
+      script.includes("DoNotExpandEnvironmentNames"),
+      `${mode}: a read that expands turns %USERPROFILE%\\bin into one machine's ` +
+        `absolute path, and the write puts that back (rustup#261)`,
+    );
+    assert.ok(
+      !script.includes("GetEnvironmentVariable"),
+      `${mode}: [Environment]::GetEnvironmentVariable expands what it returns`,
+    );
+    assert.ok(
+      !script.includes("Get-ItemProperty"),
+      `${mode}: Get-ItemProperty expands what it returns`,
+    );
+    assert.ok(
+      /RegistryValueKind\]::ExpandString/.test(script),
+      `${mode}: the value is written back as REG_EXPAND_SZ, always`,
+    );
+    assert.ok(
+      !/RegistryValueKind\]::String\b/.test(script),
+      `${mode}: REG_SZ freezes every %VAR% already on the PATH`,
+    );
+    assert.ok(
+      !script.includes(hostileDir),
+      `${mode}: the binary directory reached the script verbatim — a quote in ` +
+        `it closes the string and the rest of it becomes PowerShell`,
+    );
+  }
+  // A fail-closed skip has to stay recognisable as one, and bin/mdvl.js reads
+  // that off the string. It used to accept any result containing "already" as
+  // a success, so a skip whose text quoted a binaryDir like C:\Users\already
+  // printed as ✓ over a PATH that was never written. Off Windows there is no
+  // powershell.exe to run, the writer reports SKIP:ERROR, and the real skip
+  // string comes back for free — this must not run where the default subkey
+  // is a live User PATH.
+  if (process.platform !== "win32") {
+    const skip = configureWindowsPath("C:\\Users\\already\\.local\\bin")[0];
+    assert.match(
+      skip,
+      /^skipped/,
+      `an unreadable PATH must report as a skip even when binaryDir contains ` +
+        `the word the success check keys on, got: ${skip}`,
+    );
+  }
+  console.log("  Windows User PATH transport OK");
 
   // === published package contents ===
   // bin/mdvl.js reads <package>/checksums.json and refuses to install without

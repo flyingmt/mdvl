@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { execFileSync } = require("child_process");
 const { shellFragmentPath, fishFragmentName, stateDir } = require("./paths");
 
 const MARKER_BEGIN = "# >>> mdvl installer >>>";
@@ -201,54 +202,157 @@ function configurePath(binaryDir) {
   return results;
 }
 
-function configureWindowsPath(binaryDir) {
-  const { execSync } = require("child_process");
-
-  let currentUserPath;
-  try {
-    const output = execSync(`reg query "HKCU\\Environment" /v Path`, {
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const match = output.match(/Path\s+REG(?:_EXPAND_)?SZ\s+(.*)/);
-    currentUserPath = match ? match[1].trim() : "";
-  } catch {
-    currentUserPath = "";
-  }
-
-  const normalized = binaryDir.replace(/\//g, "\\");
-  const entries = currentUserPath
-    ? currentUserPath.split(";").filter(Boolean)
-    : [];
-
-  if (entries.some((e) => e.toLowerCase() === normalized.toLowerCase())) {
-    return ["PATH already configured"];
-  }
-
-  const newPath = normalized + ";" + currentUserPath;
-  if (newPath.length > 2048) {
-    throw new Error(
-      `Adding mdvl to User PATH would exceed the 2048-character safety limit. ` +
-        `Current length: ${currentUserPath.length}. Add manually if needed.`,
-    );
-  }
-
-  const regType = currentUserPath.includes("%") ? "REG_EXPAND_SZ" : "REG_SZ";
-  execSync(
-    `reg add "HKCU\\Environment" /v Path /t ${regType} /d "${newPath}" /f`,
-    { stdio: "pipe" },
+// A quoted PowerShell string is one parser away from the value it holds: a
+// single quote or a trailing backslash in binaryDir is enough to close it
+// early. Hand the value over as base64 of UTF-16LE instead — the script
+// rebuilds it with no quoting rules in between.
+function psStringFromBase64(value) {
+  const encoded = Buffer.from(value, "utf16le").toString("base64");
+  return (
+    `[System.Text.Encoding]::Unicode.GetString(` +
+    `[Convert]::FromBase64String('${encoded}'))`
   );
+}
 
+// mdvl 0.1.x sent the User PATH out over a cmd command line and read it back
+// off stdout, and four of the six documented ways it destroyed a PATH came in
+// through that channel (#29 root 2): %VAR% expansion, a trailing backslash
+// collapsing the quoting, cmd metacharacters, and stdout arriving in the
+// console code page. So the read, the decision and the write all happen inside
+// one PowerShell child and only a short ASCII status token comes back.
+// reg.exe cannot do that — its output format and encoding are unspecified, so
+// the value would still have to cross stdout to be parsed here.
+//
+// The read must not expand: [Environment]::GetEnvironmentVariable and
+// Get-ItemProperty both resolve %USERPROFILE% to one machine's absolute path
+// and the write would freeze it there (rustup#261). The write must not be
+// [Environment]::SetEnvironmentVariable either — it stores REG_SZ, which is
+// the same freeze by another route. Hence the raw RegistryKey calls.
+//
+// Nothing is written that was not first read successfully. An absent value is
+// not an unreadable one: a user who never had a User PATH has nothing to lose
+// and gets one created, while a value of an unexpected type is left exactly as
+// found (ADR-0007).
+const WINDOWS_PATH_ADD = `function Invoke-MdvlPath {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($sub)
+  if ($null -eq $key) { return 'SKIP:OPEN' }
   try {
-    execSync(
-      "powershell -NoProfile -Command \"[System.Environment]::SetEnvironmentVariable('dummy', $null, 'User')\"",
-      { stdio: "pipe" },
+    $name = $key.GetValueNames() | Where-Object { $_ -ieq 'Path' } | Select-Object -First 1
+    $cur = ''
+    if ($null -eq $name) {
+      $name = 'Path'
+    } else {
+      if (@('String', 'ExpandString') -notcontains $key.GetValueKind($name).ToString()) { return 'SKIP:KIND' }
+      $raw = $key.GetValue($name, $null, 'DoNotExpandEnvironmentNames')
+      if ($null -eq $raw) { return 'SKIP:READ' }
+      $cur = [string]$raw
+    }
+    $mine = $dir.TrimEnd('\\')
+    foreach ($entry in $cur.Split(';')) {
+      if ($entry.Trim().TrimEnd('\\') -ieq $mine) { return 'PRESENT' }
+    }
+    if ($cur.Length -eq 0) { $new = $dir } else { $new = $dir + ';' + $cur }
+    $key.SetValue($name, $new, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    return 'ADDED'
+  } finally {
+    $key.Close()
+  }
+}
+`;
+
+// The same rules on the way out. removeWindowsPath being accidentally safer
+// than its counterpart is not something to build on: an uninstall must not be
+// able to destroy what the install refused to touch. Every entry that is not
+// mdvl's own is kept byte for byte — empty segments, trailing backslashes and
+// %VAR% references all belong to whoever put them there.
+const WINDOWS_PATH_REMOVE = `function Invoke-MdvlPath {
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($sub, $true)
+  if ($null -eq $key) { return 'ABSENT' }
+  try {
+    $name = $key.GetValueNames() | Where-Object { $_ -ieq 'Path' } | Select-Object -First 1
+    if ($null -eq $name) { return 'ABSENT' }
+    if (@('String', 'ExpandString') -notcontains $key.GetValueKind($name).ToString()) { return 'SKIP:KIND' }
+    $raw = $key.GetValue($name, $null, 'DoNotExpandEnvironmentNames')
+    if ($null -eq $raw) { return 'SKIP:READ' }
+    $cur = [string]$raw
+    $mine = $dir.TrimEnd('\\')
+    $kept = @()
+    $found = $false
+    foreach ($entry in $cur.Split(';')) {
+      if ($entry.Trim().TrimEnd('\\') -ieq $mine) { $found = $true } else { $kept += $entry }
+    }
+    if (-not $found) { return 'ABSENT' }
+    $new = $kept -join ';'
+    if ($new.Length -eq 0) { $key.DeleteValue($name) } else { $key.SetValue($name, $new, [Microsoft.Win32.RegistryValueKind]::ExpandString) }
+    return 'REMOVED'
+  } finally {
+    $key.Close()
+  }
+}
+`;
+
+// WM_SETTINGCHANGE tells Explorer to re-read the environment so processes
+// started from now on see the new PATH. It is best-effort — the install is
+// already done by the time it runs. Broadcasting it directly rather than
+// through a throwaway User variable keeps this writer from touching any key
+// other than the one it was handed.
+const WINDOWS_PATH_EPILOGUE = `try { $status = Invoke-MdvlPath } catch { $status = 'SKIP:ERROR' }
+if ($status -eq 'ADDED' -or $status -eq 'REMOVED') {
+  try {
+    $api = @(Add-Type -PassThru -Namespace 'Mdvl' -Name 'EnvBroadcast' -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);')[0]
+    $ignored = [UIntPtr]::Zero
+    $null = $api::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 1000, [ref]$ignored)
+  } catch { }
+}
+[Console]::Out.Write($status)
+`;
+
+// hkcuSubkey is a subkey path under HKCU, never a whole hive — this seam
+// exists so the destructive cases can be exercised against a scratch key, and
+// it must not be able to aim at HKLM.
+function buildWindowsPathScript(binaryDir, hkcuSubkey, mode) {
+  const normalized = binaryDir.replace(/\//g, "\\");
+  return (
+    `$ErrorActionPreference = 'Stop'\n` +
+    `$dir = ${psStringFromBase64(normalized)}\n` +
+    `$sub = ${psStringFromBase64(hkcuSubkey)}\n` +
+    (mode === "remove" ? WINDOWS_PATH_REMOVE : WINDOWS_PATH_ADD) +
+    WINDOWS_PATH_EPILOGUE
+  );
+}
+
+function runWindowsPathScript(script) {
+  return execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64"),
+    ],
+    { encoding: "utf8", shell: false, stdio: ["ignore", "pipe", "pipe"] },
+  ).trim();
+}
+
+function configureWindowsPath(binaryDir, hkcuSubkey = "Environment") {
+  let status;
+  try {
+    status = runWindowsPathScript(
+      buildWindowsPathScript(binaryDir, hkcuSubkey, "add"),
     );
   } catch {
-    // WM_SETTINGCHANGE best-effort
+    status = "SKIP:ERROR";
   }
 
-  return ["PATH added to Windows User registry"];
+  if (status === "ADDED") return ["PATH added to Windows User registry"];
+  if (status === "PRESENT") return ["PATH already configured"];
+
+  // A PATH step that cannot write must not invalidate an install that
+  // succeeded, so this is a warning the caller prints, not a throw.
+  return [
+    `skipped Windows User PATH (${status}). Nothing was written — ` +
+      `add this to PATH by hand:\n    ${binaryDir}`,
+  ];
 }
 
 function removeUnixPath() {
@@ -287,42 +391,28 @@ function removeUnixPath() {
   return results;
 }
 
-function removeWindowsPath(binaryDir) {
-  const { execSync } = require("child_process");
-  const normalized = binaryDir.replace(/\//g, "\\");
-
-  let currentUserPath;
+function removeWindowsPath(binaryDir, hkcuSubkey = "Environment") {
+  let status;
   try {
-    const output = execSync(`reg query "HKCU\\Environment" /v Path`, {
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const match = output.match(/Path\s+REG(?:_EXPAND_)?SZ\s+(.*)/);
-    currentUserPath = match ? match[1].trim() : "";
-  } catch {
-    return ["no User PATH to clean"];
-  }
-
-  const entries = currentUserPath ? currentUserPath.split(";") : [];
-  const filtered = entries.filter(
-    (e) => e.trim().toLowerCase() !== normalized.toLowerCase(),
-  );
-  const newPath = filtered.join(";");
-
-  if (newPath !== currentUserPath) {
-    const regType = currentUserPath.includes("%") ? "REG_EXPAND_SZ" : "REG_SZ";
-    execSync(
-      `reg add "HKCU\\Environment" /v Path /t ${regType} /d "${newPath}" /f`,
-      { stdio: "pipe" },
+    status = runWindowsPathScript(
+      buildWindowsPathScript(binaryDir, hkcuSubkey, "remove"),
     );
-    return ["removed mdvl from Windows User PATH"];
+  } catch {
+    status = "SKIP:ERROR";
   }
 
-  return ["mdvl not found in User PATH"];
+  if (status === "REMOVED") return ["removed mdvl from Windows User PATH"];
+  if (status === "ABSENT") return ["mdvl not found in User PATH"];
+
+  return [
+    `skipped Windows User PATH (${status}). Nothing was written — ` +
+      `remove this from PATH by hand:\n    ${binaryDir}`,
+  ];
 }
 
 module.exports = {
   buildPathFragment,
+  buildWindowsPathScript,
   configureFishPath,
   configurePath,
   configureWindowsPath,

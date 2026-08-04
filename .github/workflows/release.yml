@@ -71,9 +71,29 @@ jobs:
       - name: Seam C — bootstrap unit tests
         run: node installer/test/bootstrap.test.js
 
+  # The Windows half of Seam C. It needs a real registry, so it cannot run in
+  # `resolve` alongside the rest, and it must not wait for Seam D: Seam D runs
+  # after publish and against the real User PATH, which is the one place these
+  # cases must never touch. Gating `build` on it keeps the ordering the other
+  # Seam C tests already have — a failure means nothing downstream is worth
+  # building.
+  windows-path:
+    name: Seam C — Windows User PATH
+    needs: resolve
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Seam C — Windows User PATH registry cases
+        run: node installer/test/windows-path.test.js
+
   build:
     name: Build ${{ matrix.target }}
-    needs: resolve
+    needs: [resolve, windows-path]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

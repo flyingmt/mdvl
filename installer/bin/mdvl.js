@@ -3,7 +3,6 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execSync } = require("child_process");
 
 const platform = require("../lib/platform");
 const checksum = require("../lib/checksum");
@@ -130,11 +129,12 @@ async function install() {
     }
 
     for (const r of pathResults) {
-      if (r.startsWith("PATH added") || r.includes("already")) {
-        logStep("✓", r);
-      } else {
-        logStep("⚠", r);
-      }
+      // A skip carries the directory it could not write, so a user under
+      // C:\Users\already\ would otherwise match the success test below.
+      const ok =
+        !r.startsWith("skipped") &&
+        (r.startsWith("PATH added") || r.includes("already"));
+      logStep(ok ? "✓" : "⚠", r);
     }
 
     if (process.platform !== "win32") {
@@ -188,7 +188,7 @@ async function uninstall() {
 
     if (process.platform === "win32") {
       const results = shells.removeWindowsPath(path.dirname(destBinary));
-      for (const r of results) logStep("✓", r);
+      for (const r of results) logStep(r.startsWith("skipped") ? "⚠" : "✓", r);
     } else {
       const results = shells.removeUnixPath();
       for (const r of results) logStep("✓", r);
