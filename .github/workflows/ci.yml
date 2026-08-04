@@ -1,0 +1,29 @@
+# The destructive User PATH cases need a real registry, so there is nowhere
+# else they can run: Seam C runs on Linux, and Seam D runs after publish and
+# against the real User PATH, which is the one place these cases must never
+# touch. Without this workflow the only Windows run is the release gate — which
+# fires after a tag is cut, too late to be a regression gate for the change that
+# destroyed a User PATH in the first place (ADR-0007).
+#
+# Branches only, not tags: release.yml already gates the build on the same
+# test, and a tag push would otherwise run it twice.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  windows-path:
+    name: Seam C — Windows User PATH
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Seam C — Windows User PATH registry cases
+        run: node installer/test/windows-path.test.js
