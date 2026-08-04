@@ -329,8 +329,11 @@ function run() {
     console.log("Testing removal...");
     {
       const key = scratchKey();
+      // One entry is padded with spaces: a hand-edited PATH often reads
+      // `C:\foo; C:\bar`, and the padding belongs to whoever typed it. Without
+      // it here, normalising every kept entry passes unnoticed.
       const others =
-        "%USERPROFILE%\\bin;C:\\사용자\\도구\\;C:\\a&b;;C:\\Windows\\system32";
+        "%USERPROFILE%\\bin; C:\\사용자\\도구\\ ;C:\\a&b;;C:\\Windows\\system32";
       seed(key, "Path", `${MDVL_DIR};${others}`, "ExpandString");
       const result = removeWindowsPath(MDVL_DIR, key);
       const after = read(key, "Path");
