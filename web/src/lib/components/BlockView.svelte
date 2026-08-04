@@ -19,6 +19,7 @@
 	let {
 		block,
 		definitionSource,
+		documentPath,
 		readonly = false,
 		onchange,
 		onremove,
@@ -26,6 +27,8 @@
 	}: {
 		block: Block;
 		definitionSource: string;
+		/** Where the document sits, so an address relative to it can be followed. */
+		documentPath: string;
 		/** A view shows the Block exactly as drawn — no control that could change it. */
 		readonly?: boolean;
 		onchange?: (markdown: string) => void;
@@ -144,13 +147,13 @@
 			</div>
 		</div>
 	{:else if block.kind === 'heading'}
-		<Heading source={block.source} {definitionSource} />
+		<Heading source={block.source} {definitionSource} {documentPath} />
 	{:else if block.kind === 'list'}
-		<List source={block.source} {definitionSource} />
+		<List source={block.source} {definitionSource} {documentPath} />
 	{:else if block.kind === 'blockquote'}
-		<Blockquote source={block.source} {definitionSource} />
+		<Blockquote source={block.source} {definitionSource} {documentPath} />
 	{:else if block.kind === 'table'}
-		<Table source={block.source} {definitionSource} />
+		<Table source={block.source} {definitionSource} {documentPath} />
 	{:else if block.kind === 'mermaid'}
 		<Mermaid
 			source={block.source}
@@ -160,7 +163,7 @@
 	{:else if block.kind === 'code'}
 		<CodeFence source={block.source} language={block.language} />
 	{:else}
-		<Paragraph source={block.source} {definitionSource} />
+		<Paragraph source={block.source} {definitionSource} {documentPath} />
 	{/if}
 
 	{#if block.comments.length > 0 || commenting}

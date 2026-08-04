@@ -12,7 +12,8 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{any, get, post, put};
+use percent_encoding::percent_decode_str;
 #[cfg(not(feature = "dev-proxy"))]
 use rust_embed::RustEmbed;
 use serde::Serialize;
@@ -136,8 +137,13 @@ fn router(app: Arc<App>) -> Router {
         .route("/exchange", post(api::exchange))
         .layer(middleware::from_fn_with_state(app.clone(), only_from_us));
 
-    let api = guarded.merge(unauthenticated).with_state(app);
-    Router::new().nest("/api", api).fallback(asset)
+    let api = guarded.merge(unauthenticated).with_state(app.clone());
+    // The last stop now reaches into the Project Root, so it has to turn away
+    // another origin exactly as `/api` does.
+    let elsewhere = any(asset)
+        .layer(middleware::from_fn_with_state(app.clone(), only_from_us))
+        .with_state(app);
+    Router::new().nest("/api", api).fallback_service(elsewhere)
 }
 
 /// The daemon's token is the only thing standing between the reviewer's files
@@ -211,13 +217,62 @@ fn addressed_to_us(headers: &HeaderMap, port: u16) -> bool {
 }
 
 #[cfg(not(feature = "dev-proxy"))]
-async fn asset(uri: Uri) -> Response {
+async fn asset(State(app): State<Arc<App>>, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     embedded(path)
+        .or_else(|| pointed_at(&app.root, uri.path()))
         .or_else(|| embedded("index.html"))
         .unwrap_or_else(|| {
             (StatusCode::NOT_FOUND, "the reviewer app was not built").into_response()
         })
+}
+
+/// The kinds of file a rendered document may point at, and the type each is
+/// announced as. The type is read off the name and never off the bytes: a
+/// document under the Project Root was written by an Agent, and this origin's
+/// `localStorage` holds the daemon's token, so nothing that a browser would
+/// run as a page belongs on this list.
+const PICTURES: &[(&str, &str)] = &[
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("jpeg", "image/jpeg"),
+    ("gif", "image/gif"),
+    ("webp", "image/webp"),
+    ("avif", "image/avif"),
+    ("ico", "image/x-icon"),
+];
+
+/// A file the rendered document points at, read out of the Project Root. An
+/// `<img>` tag cannot carry the token, so the root check and the list above are
+/// the whole of what stands between a page and the disk.
+fn pointed_at(root: &ProjectRoot, requested: &str) -> Option<Response> {
+    // Decoding comes first: `%2e%2e%2f` is only an escape until it is spelled
+    // out, and the root check has to see it spelled out.
+    let decoded = percent_decode_str(requested).decode_utf8().ok()?;
+    let absolute = root
+        .file_inside(&root.path().join(decoded.trim_start_matches('/')))
+        .ok()?;
+    // The list above would already refuse `daemon.json`; this refuses the
+    // directory, whatever a file inside it is called. `absolute` has been
+    // resolved, so the directory has to be resolved too or a `.mdvl` that is
+    // itself a link ends up spelled two ways and compared as two places.
+    let state_dir = root.state_dir();
+    if absolute.starts_with(state_dir.canonicalize().unwrap_or(state_dir)) {
+        return None;
+    }
+    let extension = absolute.extension()?.to_str()?.to_ascii_lowercase();
+    let (_, mime) = PICTURES.iter().find(|(named, _)| *named == extension)?;
+    let bytes = fs::read(&absolute).ok()?;
+    Some(
+        (
+            [
+                (header::CONTENT_TYPE, *mime),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            ],
+            bytes,
+        )
+            .into_response(),
+    )
 }
 
 #[cfg(not(feature = "dev-proxy"))]
@@ -231,7 +286,13 @@ fn embedded(path: &str) -> Option<Response> {
 /// away. The API keeps answering from this same origin, so nothing about
 /// authentication changes between development and a real build.
 #[cfg(feature = "dev-proxy")]
-async fn asset(uri: Uri) -> Response {
+async fn asset(State(app): State<Arc<App>>, uri: Uri) -> Response {
+    // Vite answers an address it does not know with the app shell, so a file
+    // beside the document would never fall through to here — it is looked for
+    // first rather than last.
+    if let Some(response) = pointed_at(&app.root, uri.path()) {
+        return response;
+    }
     let target = format!("{VITE}{}", uri.path_and_query().map_or("/", |p| p.as_str()));
     let fetched = tokio::task::spawn_blocking(move || {
         let mut response = ureq::get(&target).call()?;

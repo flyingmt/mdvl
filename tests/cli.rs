@@ -647,3 +647,254 @@ fn the_view_content_endpoint_refuses_paths_outside_the_root() {
         "a view that walks out of the root must be refused, got {traversal}"
     );
 }
+
+/// A one-pixel PNG, real enough for a browser to decode.
+const PIXEL: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+    0x00, 0x03, 0x01, 0x01, 0x00, 0xc9, 0xfe, 0x92, 0xef, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+    0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+/// Bytes that live outside the Project Root. Seeing them in a response is the
+/// failure — what they are does not matter.
+const OUTSIDE: &[u8] = b"bytes from outside the project root\n";
+
+/// Markup that would run in the daemon's own origin, where the token is kept.
+const MARKUP: &str = "<script>/* MDVL-SEAM-A-SCRIPT-MARKER */ alert(1)</script>\n";
+
+/// A drawing is markup too — navigate to one and its script runs.
+const DRAWING: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\">\
+<script>/* MDVL-SEAM-A-DRAWING-MARKER */ alert(1)</script></svg>\n";
+
+struct Served {
+    status: u16,
+    content_type: String,
+    nosniff: bool,
+    body: Vec<u8>,
+}
+
+/// What an `<img>` tag does: a plain GET with no token, because a tag cannot
+/// put a header on its request. Nothing in the reviewer's page can do better,
+/// so this is the whole of what the daemon has to decide on.
+fn as_a_tag_would(h: &Harness, path: &str) -> Served {
+    let header = |response: &ureq::http::Response<ureq::Body>, name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string()
+    };
+    match ureq::get(h.url(path)).call() {
+        Ok(mut response) => {
+            let status = response.status().as_u16();
+            let content_type = header(&response, "content-type");
+            let nosniff = header(&response, "x-content-type-options") == "nosniff";
+            let body = response.body_mut().read_to_vec().expect("response body");
+            Served {
+                status,
+                content_type,
+                nosniff,
+                body,
+            }
+        }
+        // A refusal has no body to inspect, which is itself the property the
+        // tests below are asserting.
+        Err(ureq::Error::StatusCode(code)) => Served {
+            status: code,
+            content_type: String::new(),
+            nosniff: false,
+            body: Vec::new(),
+        },
+        Err(other) => panic!("unexpected transport error: {other}"),
+    }
+}
+
+#[test]
+fn an_image_under_the_project_root_reaches_the_page_as_itself() {
+    let (h, _id) = Harness::with_doc("plan.md", "# Plan\n\n![shot](docs/shot.png)\n");
+    fs::create_dir_all(h.root.join("docs")).unwrap();
+    fs::write(h.root.join("docs/shot.png"), PIXEL).unwrap();
+
+    let served = as_a_tag_would(&h, "/docs/shot.png");
+
+    assert_eq!(
+        served.status, 200,
+        "an image the document points at has to reach the page, and a tag carries no token"
+    );
+    assert_eq!(
+        served.body, PIXEL,
+        "the browser needs the file's exact bytes or it has nothing to decode"
+    );
+    assert_eq!(
+        served.content_type, "image/png",
+        "the type is decided by the extension and nothing else"
+    );
+    assert!(
+        served.nosniff,
+        "without nosniff the browser is free to decide the type for itself, \
+         which is the sniffing the extension whitelist exists to prevent"
+    );
+}
+
+#[test]
+fn nothing_under_the_daemons_own_directory_is_reachable_over_http() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    // A whitelisted extension inside `.mdvl/`, so this pins the hard exclusion
+    // and not the extension whitelist that would also have stopped it.
+    fs::write(h.root.join(".mdvl/decoy.png"), PIXEL).unwrap();
+
+    let token_file = as_a_tag_would(&h, "/.mdvl/daemon.json");
+    let decoy = as_a_tag_would(&h, "/.mdvl/decoy.png");
+
+    assert!(
+        !String::from_utf8_lossy(&token_file.body).contains(&h.token),
+        "daemon.json is written 0600 so only its owner can read it — the daemon \
+         serving the Project Root must not hand the token to anything that reaches the port"
+    );
+    assert_ne!(
+        decoy.body, PIXEL,
+        "`.mdvl/` holds the token and the human's comments, so it is closed \
+         whatever the file is called"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_daemon_directory_reached_through_a_symlink_is_still_refused() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    // `.mdvl` as a link to a real directory elsewhere in the root. The daemon
+    // is happy either way — `create_dir_all` succeeds on a link that already
+    // points at a directory — but the refusal compares a path that has been
+    // canonicalised against a `<root>/.mdvl` that has not, and a link is
+    // exactly where those two spellings come apart.
+    fs::rename(h.root.join(".mdvl"), h.root.join("hidden")).unwrap();
+    std::os::unix::fs::symlink(h.root.join("hidden"), h.root.join(".mdvl")).unwrap();
+    fs::write(h.root.join("hidden/pic.png"), PIXEL).unwrap();
+
+    let served = as_a_tag_would(&h, "/.mdvl/pic.png");
+
+    assert_ne!(
+        served.body, PIXEL,
+        "the directory refusal and the extension list are meant to hold `.mdvl` \
+         shut independently — through a link the list is left holding it alone"
+    );
+}
+
+#[test]
+fn a_path_that_walks_out_of_the_project_root_hands_back_nothing() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    let elsewhere = tempfile::tempdir().unwrap();
+    fs::write(elsewhere.path().join("secret.png"), OUTSIDE).unwrap();
+    let sideways = elsewhere
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+
+    // A browser collapses `..` before it sends, so the escape that actually
+    // arrives on the wire is the encoded one; the plain form is here because a
+    // process that is not a browser can still send it.
+    let encoded = as_a_tag_would(&h, &format!("/%2e%2e/{sideways}/secret.png"));
+    let double_encoded = as_a_tag_would(&h, &format!("/%2e%2e%2f{sideways}%2fsecret.png"));
+
+    assert_ne!(
+        encoded.body, OUTSIDE,
+        "the root check happens after `..` is resolved, so no spelling of it gets out"
+    );
+    assert_ne!(
+        double_encoded.body, OUTSIDE,
+        "decoding the path must not happen after the root check"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_out_of_the_project_root_hands_back_nothing() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    let elsewhere = tempfile::tempdir().unwrap();
+    let secret = elsewhere.path().join("secret.png");
+    fs::write(&secret, OUTSIDE).unwrap();
+    std::os::unix::fs::symlink(&secret, h.root.join("bait.png")).unwrap();
+
+    let served = as_a_tag_would(&h, "/bait.png");
+
+    assert_ne!(
+        served.body, OUTSIDE,
+        "canonicalize resolves the link before the root check, so a link is not a way out"
+    );
+}
+
+#[test]
+fn an_html_file_under_the_project_root_never_reaches_the_page_as_itself() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("notes.html"), MARKUP).unwrap();
+
+    let served = as_a_tag_would(&h, "/notes.html");
+
+    assert!(
+        !String::from_utf8_lossy(&served.body).contains("MDVL-SEAM-A-SCRIPT-MARKER"),
+        "the token lives in this origin's localStorage — a document written by an \
+         Agent must never run as a page here"
+    );
+}
+
+#[test]
+fn an_svg_under_the_project_root_never_reaches_the_page_as_itself() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("diagram.svg"), DRAWING).unwrap();
+
+    let served = as_a_tag_would(&h, "/diagram.svg");
+
+    assert!(
+        !String::from_utf8_lossy(&served.body).contains("MDVL-SEAM-A-DRAWING-MARKER"),
+        "an svg navigated to directly runs its script in this origin, and the \
+         token is in this origin's localStorage — diagrams are drawn by mermaid \
+         in the browser, so nothing is lost by leaving svg off the list"
+    );
+    assert_ne!(
+        served.content_type, "image/svg+xml",
+        "widening the list to svg is a decision with an owner, not something \
+         that should arrive as a side effect"
+    );
+}
+
+#[test]
+fn a_route_the_daemon_does_not_recognise_still_hands_back_the_app_shell() {
+    let (h, id) = Harness::with_doc("plan.md", DOC);
+
+    let deep_link = as_a_tag_would(&h, &format!("/r/{id}"));
+    let body = String::from_utf8_lossy(&deep_link.body).into_owned();
+
+    assert_eq!(
+        deep_link.status, 200,
+        "a review's deep link is not a file on disk — it is the app, and losing \
+         the fallback makes every review page a 404"
+    );
+    assert!(
+        deep_link.content_type.starts_with("text/html"),
+        "the app shell is html, got {}",
+        deep_link.content_type
+    );
+    assert!(
+        body.contains("modulepreload"),
+        "the shell that boots the reviewer app must come back, not an empty 200"
+    );
+}
+
+#[test]
+fn the_project_files_are_closed_to_pages_served_from_another_origin() {
+    let (h, _id) = Harness::with_doc("plan.md", DOC);
+    fs::write(h.root.join("shot.png"), PIXEL).unwrap();
+
+    let code = status_of(ureq::get(h.url("/shot.png")).header("Origin", "http://evil.example"));
+
+    assert_eq!(
+        code, 403,
+        "the fallback now hands out the Project Root, so it has to turn away \
+         another origin exactly as /api already does"
+    );
+}

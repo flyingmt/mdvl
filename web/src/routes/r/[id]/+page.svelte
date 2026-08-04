@@ -219,6 +219,7 @@
 				<BlockView
 					{block}
 					{definitionSource}
+					documentPath={path}
 					onchange={(markdown) => edit(index, markdown)}
 					onremove={() => drop(index)}
 					oncomments={(comments) => setComments(index, comments)}

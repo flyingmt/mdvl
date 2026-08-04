@@ -34,7 +34,7 @@ A human instruction anchored to a Block's line range. The Agent, not the app, ca
 _Avoid_: Note, feedback, annotation, suggestion
 
 **Project Root**:
-The nearest ancestor directory containing `.git`, or the working directory if there is none. One Review daemon serves one Project Root, and no file outside it can be reviewed.
+The nearest ancestor directory containing `.git`, or the working directory if there is none. One Review daemon serves one Project Root, and no file outside it can be reviewed. Reviewing is not the only way in any more: the pictures a document points at are served from inside the root straight to the page ([ADR-0008](docs/adr/0008-the-daemon-serves-pictures-from-the-project-root.md)).
 _Avoid_: Workspace, repo, base dir
 
 **Submit**:

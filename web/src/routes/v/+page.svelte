@@ -46,7 +46,7 @@
 			<p class="text-sm text-muted-foreground">{t.loading}</p>
 		{:else}
 			{#each doc.blocks as block (block.id)}
-				<BlockView {block} {definitionSource} readonly />
+				<BlockView {block} {definitionSource} documentPath={path} readonly />
 			{/each}
 		{/if}
 	</main>

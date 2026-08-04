@@ -5,3 +5,5 @@ The daemon is scoped to a Project Root and records its port and token in `<root>
 ## Consequences
 
 Several daemons run when several projects are in play, each with its own port and browser tab. That is the cost of the boundary; a machine-wide daemon would have to carry per-request root checks instead, and a bug there would expose any file on disk.
+
+The boundary now guards more than the one markdown file a Review or a View opens: the daemon also answers for the pictures that document points at, so every read still funnels through this root check, and the surface it stands in front of is larger than it was. See [0008](./0008-the-daemon-serves-pictures-from-the-project-root.md).

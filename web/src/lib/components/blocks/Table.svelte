@@ -1,9 +1,13 @@
 <script lang="ts">
 	import { renderMarkdown } from '$lib/render';
 
-	let { source, definitionSource }: { source: string; definitionSource: string } = $props();
+	let {
+		source,
+		definitionSource,
+		documentPath
+	}: { source: string; definitionSource: string; documentPath: string } = $props();
 
-	const html = $derived(renderMarkdown(source, definitionSource));
+	const html = $derived(renderMarkdown(source, definitionSource, documentPath));
 </script>
 
 <!--

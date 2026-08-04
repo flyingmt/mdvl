@@ -43,9 +43,9 @@ impl ProjectRoot {
         self.state_dir().join("results").join(format!("{id}.json"))
     }
 
-    /// Prove a requested path is a markdown file inside this root, resolving
-    /// symlinks and `..` before deciding — the check every request funnels through.
-    pub fn resolve(&self, requested: &Path) -> Result<PathBuf> {
+    /// Prove a requested path is a file inside this root, resolving symlinks
+    /// and `..` before deciding — the check every request funnels through.
+    pub fn file_inside(&self, requested: &Path) -> Result<PathBuf> {
         let absolute = requested
             .canonicalize()
             .with_context(|| format!("{} does not exist", requested.display()))?;
@@ -59,6 +59,13 @@ impl ProjectRoot {
         if !absolute.is_file() {
             bail!("{} is not a file", requested.display());
         }
+        Ok(absolute)
+    }
+
+    /// The same check, narrowed to the only kind of file that can be opened as
+    /// a Review or a view.
+    pub fn resolve(&self, requested: &Path) -> Result<PathBuf> {
+        let absolute = self.file_inside(requested)?;
         match absolute.extension().and_then(|e| e.to_str()) {
             Some("md" | "markdown") => Ok(absolute),
             _ => bail!("{} is not markdown", requested.display()),

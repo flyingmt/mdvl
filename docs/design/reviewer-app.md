@@ -79,6 +79,34 @@ Block also leads the control group with a ⤢ that opens the diagram full-window
 to pan and zoom — the why is in
 [zooming into diagrams](zooming-into-diagrams.md).
 
+## Pictures in the document
+
+A document that says `![](docs/shot.png)` means the file next to it on disk, and
+the daemon hands that file over — the rule for which files and why it is safe is
+[ADR-0008](../adr/0008-the-daemon-serves-pictures-from-the-project-root.md).
+Seven raster kinds are served (`png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`,
+`ico`), the name read without regard to case so that `SHOT.PNG` is the same kind
+as `shot.png`; an address naming anything else falls through to the app shell,
+so the reader gets a broken picture rather than a download.
+
+The address in the document is not the address the browser can ask for, and the
+gap is not the same on the two pages. `docs/shot.png` read against `/v` becomes
+`/docs/shot.png` by luck, read against `/r/abc123` becomes `/r/docs/shot.png`,
+and neither is right for a document that is itself in a subdirectory — `img/a.png`
+inside `notes/plan.md` means `notes/img/a.png`, which the page's own URL cannot
+say. So each address is resolved against **the document's directory**, not the
+page's, and handed to the browser as a path under the Project Root. That happens
+once, in the render pipeline, rather than in each of the Block components that
+insert rendered HTML.
+
+Two rules keep that rewrite from reaching where it should not. It runs *after*
+sanitising, so an address the sanitiser dropped cannot come back as a path the
+daemon is then asked for. And an address that resolves to another host — an
+`https://` one, or the protocol-relative `//example.com/a.png` that looks
+relative until it is resolved — is left exactly as written, for the browser to
+fetch itself: the daemon is bound to loopback and is not a proxy
+([proxying-remote-images.md](../../.out-of-scope/proxying-remote-images.md)).
+
 ## Language
 
 Wording lives in one dictionary keyed by an English source of truth; every other
@@ -128,6 +156,9 @@ one an agent reads before building a feature; this list is the summary.
   → [language-picker.md](../../.out-of-scope/language-picker.md)
 - **No reordering by dragging.** Moving a section is what a comment is for.
   → [reordering-blocks.md](../../.out-of-scope/reordering-blocks.md)
+- **No proxying of remote images.** A picture on another host is the browser's
+  fetch to make; the daemon talks to nothing off the machine.
+  → [proxying-remote-images.md](../../.out-of-scope/proxying-remote-images.md)
 
 ## The view page: reading without reviewing
 

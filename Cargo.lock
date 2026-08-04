@@ -656,6 +656,7 @@ dependencies = [
  "clap",
  "getrandom",
  "open",
+ "percent-encoding",
  "rust-embed",
  "serde",
  "serde_json",
