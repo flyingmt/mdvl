@@ -10,6 +10,7 @@
 		insertAfter,
 		lineRanges,
 		parseDocument,
+		referenceDefinitionSource,
 		removeBlock,
 		replaceBlock,
 		serialise,
@@ -35,6 +36,7 @@
 	const commentCount = $derived(
 		doc.blocks.reduce((total, block) => total + block.comments.length, 0)
 	);
+	const definitionSource = $derived(referenceDefinitionSource(doc));
 
 	onMount(() => {
 		let close = () => {};
@@ -216,6 +218,7 @@
 			{#each doc.blocks as block, index (block.id)}
 				<BlockView
 					{block}
+					{definitionSource}
 					onchange={(markdown) => edit(index, markdown)}
 					onremove={() => drop(index)}
 					oncomments={(comments) => setComments(index, comments)}

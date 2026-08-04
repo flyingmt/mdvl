@@ -8,7 +8,15 @@ export type Comment = { id: string; body: string };
 
 /** What a Block is, which decides how it is drawn. */
 export type Kind =
-	'heading' | 'paragraph' | 'list' | 'blockquote' | 'table' | 'code' | 'mermaid' | 'other';
+	| 'heading'
+	| 'paragraph'
+	| 'list'
+	| 'blockquote'
+	| 'table'
+	| 'code'
+	| 'mermaid'
+	| 'definition'
+	| 'other';
 
 export type Block = {
 	id: string;
@@ -58,9 +66,17 @@ export function parseDocument(text: string): Document {
 	return { prelude, blocks };
 }
 
+/** Definitions supplied as render context, never as part of another Block's source. */
+export function referenceDefinitionSource(document: Document): string {
+	return document.blocks
+		.filter((block) => block.kind === 'definition')
+		.map((block) => block.source)
+		.join('\n\n');
+}
+
 function kindOf(type: string, language: string | null): Kind {
 	if (type === 'code') return language === 'mermaid' ? 'mermaid' : 'code';
-	const known: Kind[] = ['heading', 'paragraph', 'list', 'blockquote', 'table'];
+	const known: Kind[] = ['heading', 'paragraph', 'list', 'blockquote', 'table', 'definition'];
 	return known.find((kind) => kind === type) ?? 'other';
 }
 

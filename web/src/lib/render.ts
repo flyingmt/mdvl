@@ -17,6 +17,7 @@ const renderer = unified()
 	.use(rehypeSanitize)
 	.use(rehypeStringify);
 
-export function renderMarkdown(source: string): string {
-	return String(renderer.processSync(source));
+export function renderMarkdown(source: string, definitionSource = ''): string {
+	const markdown = definitionSource ? `${source}\n\n${definitionSource}` : source;
+	return String(renderer.processSync(markdown));
 }

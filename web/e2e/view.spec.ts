@@ -21,6 +21,19 @@ mdvl review plan.md
 \`\`\`
 `;
 
+const VIEW_REFERENCE_DOC = `Read [full][full-ref], [collapsed][], [shortcut], and [duplicate].
+Keep [missing] literal.
+
+[full-ref]: https://example.com/full
+
+[collapsed]: https://example.com/collapsed
+
+[shortcut]: https://example.com/shortcut
+
+[duplicate]: https://example.com/first
+[DUPLICATE]: https://example.com/second
+`;
+
 test.afterEach(stopEverything);
 
 const blocks = (page: Page) => page.getByTestId('block');
@@ -35,6 +48,40 @@ test('renders the document with the review renderer, mermaid and all', async ({ 
 	await expect(blocks(page)).toHaveCount(6);
 	await expect(blocks(page).nth(3).getByTestId('diagram').locator('svg')).toBeVisible();
 	await expect(blocks(page).nth(5).locator('pre code')).toContainText('mdvl review plan.md');
+});
+
+test('reference links resolve all forms from later definitions while preserving fallbacks', async ({
+	page
+}) => {
+	const view = openView(VIEW_REFERENCE_DOC);
+	await page.goto(view.url);
+
+	const referenceBlock = blocks(page).first();
+	const expectedLinks = [
+		['full', 'https://example.com/full'],
+		['collapsed', 'https://example.com/collapsed'],
+		['shortcut', 'https://example.com/shortcut'],
+		['duplicate', 'https://example.com/first']
+	] as const;
+	for (const [name, target] of expectedLinks) {
+		await expect(
+			referenceBlock.getByRole('link', { name, exact: true }),
+			`${name} must resolve against definitions that follow its Block`
+		).toHaveAttribute('href', target);
+	}
+
+	await expect(
+		referenceBlock,
+		'an unresolved reference must remain literal Markdown'
+	).toContainText('[missing]');
+	await expect(
+		referenceBlock.getByRole('link', { name: 'missing', exact: true }),
+		'an unresolved reference must not become a link'
+	).toHaveCount(0);
+	await expect(
+		page.locator('main'),
+		'definition source must not be visible in View'
+	).not.toContainText('[full-ref]:');
 });
 
 test('a diagram that will not parse shows its source without hiding the document', async ({

@@ -27,6 +27,17 @@ mdvl review plan.md
 \`\`\`
 `;
 
+const REVIEW_REFERENCE_SOURCE = 'Read [full][target], [target][], and [target].';
+const REVIEW_REFERENCE_DOC = `${REVIEW_REFERENCE_SOURCE}
+
+[target]: https://example.com/original "Original"
+`;
+const UPDATED_REFERENCE_DEFINITION = '[target]: https://example.com/updated "Updated"';
+const UPDATED_REVIEW_REFERENCE_DOC = `${REVIEW_REFERENCE_SOURCE}
+
+${UPDATED_REFERENCE_DEFINITION}
+`;
+
 test.afterEach(stopEverything);
 
 const blocks = (page: Page) => page.getByTestId('block');
@@ -55,6 +66,50 @@ test('renders the document as blocks and draws the mermaid diagram', async ({ pa
 	await expect(page.getByText('Auth uses OAuth.')).toBeVisible();
 	await expect(blocks(page)).toHaveCount(6);
 	await expect(blocks(page).nth(3).getByTestId('diagram').locator('svg')).toBeVisible();
+});
+
+test('reference links keep Block source local and use a live definition exactly once on submit', async ({
+	page
+}) => {
+	const review = openReview(REVIEW_REFERENCE_DOC);
+	await page.goto(review.url);
+
+	const referenceBlock = blocks(page).nth(0);
+	await referenceBlock.hover();
+	await referenceBlock.getByRole('button', { name: 'Edit this block' }).click();
+	await expect(
+		referenceBlock.getByRole('textbox', { name: 'Markdown source of this block' }),
+		'a Block editor must contain only that Block source, not definition context'
+	).toHaveValue(REVIEW_REFERENCE_SOURCE);
+	await referenceBlock.getByRole('button', { name: 'Done', exact: true }).click();
+
+	const definitionBlock = blocks(page).nth(1);
+	const editDefinition = definitionBlock.getByRole('button', { name: 'Edit this block' });
+	await editDefinition.focus();
+	await editDefinition.press('Enter');
+	await definitionBlock
+		.getByRole('textbox', { name: 'Markdown source of this block' })
+		.fill(UPDATED_REFERENCE_DEFINITION);
+	await definitionBlock.getByRole('button', { name: 'Done', exact: true }).click();
+
+	const links = referenceBlock.getByRole('link');
+	await expect(
+		links,
+		'full, collapsed, and shortcut references must all resolve before Submit'
+	).toHaveCount(3);
+	for (let index = 0; index < 3; index += 1) {
+		await expect(
+			links.nth(index),
+			'an edited definition target must immediately update every referencing form'
+		).toHaveAttribute('href', 'https://example.com/updated');
+	}
+
+	await page.getByRole('button', { name: 'Submit', exact: true }).click();
+	await expect(page.getByText('Sent to the agent.')).toBeVisible();
+	expect(
+		fileContents(review),
+		'Submit must preserve Block gaps and serialise the edited definition exactly once'
+	).toBe(UPDATED_REVIEW_REFERENCE_DOC);
 });
 
 test('a code fence is shown as code rather than prose', async ({ page }) => {

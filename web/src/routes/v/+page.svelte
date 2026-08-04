@@ -3,13 +3,14 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import * as api from '$lib/api';
-	import { parseDocument, type Document } from '$lib/blocks';
+	import { parseDocument, referenceDefinitionSource, type Document } from '$lib/blocks';
 	import { t } from '$lib/i18n';
 	import BlockView from '$lib/components/BlockView.svelte';
 
 	let path = $state('');
 	let doc = $state<Document>({ prelude: '', blocks: [] });
 	let loading = $state(true);
+	const definitionSource = $derived(referenceDefinitionSource(doc));
 
 	// A view is a snapshot: the file is read once, here, and never again. Seeing
 	// newer bytes means re-running `mdvl view`. This tab is also not a viewer —
@@ -45,7 +46,7 @@
 			<p class="text-sm text-muted-foreground">{t.loading}</p>
 		{:else}
 			{#each doc.blocks as block (block.id)}
-				<BlockView {block} readonly />
+				<BlockView {block} {definitionSource} readonly />
 			{/each}
 		{/if}
 	</main>

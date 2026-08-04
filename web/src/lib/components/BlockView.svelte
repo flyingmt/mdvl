@@ -18,12 +18,14 @@
 
 	let {
 		block,
+		definitionSource,
 		readonly = false,
 		onchange,
 		onremove,
 		oncomments
 	}: {
 		block: Block;
+		definitionSource: string;
 		/** A view shows the Block exactly as drawn — no control that could change it. */
 		readonly?: boolean;
 		onchange?: (markdown: string) => void;
@@ -142,13 +144,13 @@
 			</div>
 		</div>
 	{:else if block.kind === 'heading'}
-		<Heading source={block.source} />
+		<Heading source={block.source} {definitionSource} />
 	{:else if block.kind === 'list'}
-		<List source={block.source} />
+		<List source={block.source} {definitionSource} />
 	{:else if block.kind === 'blockquote'}
-		<Blockquote source={block.source} />
+		<Blockquote source={block.source} {definitionSource} />
 	{:else if block.kind === 'table'}
-		<Table source={block.source} />
+		<Table source={block.source} {definitionSource} />
 	{:else if block.kind === 'mermaid'}
 		<Mermaid
 			source={block.source}
@@ -158,7 +160,7 @@
 	{:else if block.kind === 'code'}
 		<CodeFence source={block.source} language={block.language} />
 	{:else}
-		<Paragraph source={block.source} />
+		<Paragraph source={block.source} {definitionSource} />
 	{/if}
 
 	{#if block.comments.length > 0 || commenting}
